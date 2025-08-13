@@ -48,6 +48,9 @@ Some settings may be superseded by your Mudae server settings.
 + `rolling` - (True|False) **Case-sensitive**, uses `channelid` to **Prefix Roll**
 + `slash_rolling` - (True|False) **Case-sensitive**, uses `slash_ids` to **Slash roll**
 + `random_rolling` - (True|False) **Case-sensitive**, Random roll time between the each reset.
++ `daily_kakera` - (True|False) **Case-sensitive**, Enables the bot to automatically run the $dk (daily kakera) command when kakera reaction cooldown is detected. Set to "True" to enable.
++ `reset_claim_timer` - (True|False) **Case-sensitive**, If enabled, the bot will attempt to run the $rt command when it is needs to claim a character but it is still on cooldown. Set to "True" to enable.
++ `reset_claim_timer_cooldown` - (integer, in hours) Set this value to your cooldown time for the $rt command. You can find your cooldown time by running $bonus.
 + `daily_claiming` - (True|False) **Case-sensitive**, Trigger $daily command everyday
 + `poke_rolling` - (True|False) **Case-sensitive**, Pokeslot rolling enabled, uses `channelid`
 + `series_list` - **Case-sensitive** Name of series of characters you want to claim  e.g. \[ "Honkai Impact 3rd" , "Senran Kagura" \]

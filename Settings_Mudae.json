@@ -17,6 +17,9 @@
    "rolling":"True",
    "slash_rolling":"True",
    "random_rolling":"True",
+   "daily_kakera":"True",
+   "reset_claim_timer":"True",
+   "reset_claim_timer_cooldown":20,
    "daily_claiming":"True",
    "poke_rolling":"True",
    "series_list":[
