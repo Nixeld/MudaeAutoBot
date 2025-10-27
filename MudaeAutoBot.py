@@ -574,7 +574,7 @@ def on_message(resp):
                             
                             # Check for kakera wall after claiming
                             warn_check = mudae_warning(channelid)
-                            kakerawallwait = wait_for(bot, lambda m: warn_check(m) and 'kakera' in m.parsed.auto()['content'], timeout=5)
+                            kakerawallwait = wait_for(bot, lambda m: warn_check(m) and '$ku' in m.parsed.auto()['content'], timeout=5)
                             if kakerawallwait is not None:
                                 time_to_wait = waitk_finder.findall(kakerawallwait['content'])
                             else:
