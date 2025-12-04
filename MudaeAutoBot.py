@@ -91,10 +91,11 @@ def load_cooldowns():
     try:
         with open(COOLDOWNS_FILE, 'r', encoding='utf-8') as f:
             cooldowns = json.load(f)
-            kakera_wall = {int(k): float(v) for k, v in cooldowns.get('kakera_wall', {}).items()}
-            waifu_wall = {int(k): int(v) for k, v in cooldowns.get('waifu_wall', {}).items()}
-            dailykakera_wall = {int(k): float(v) for k, v in cooldowns.get('dailykakera_wall', {}).items()}
-            resetclaimtimer_wall = {int(k): float(v) for k, v in cooldowns.get('resetclaimtimer_wall', {}).items()}
+            # Use string keys to match Discord IDs (channel_id, guild_id) used elsewhere
+            kakera_wall = {str(k): float(v) for k, v in cooldowns.get('kakera_wall', {}).items()}
+            waifu_wall = {str(k): int(v) for k, v in cooldowns.get('waifu_wall', {}).items()}
+            dailykakera_wall = {str(k): float(v) for k, v in cooldowns.get('dailykakera_wall', {}).items()}
+            resetclaimtimer_wall = {str(k): float(v) for k, v in cooldowns.get('resetclaimtimer_wall', {}).items()}
             daily_roll_reset_wall = float(cooldowns.get('daily_roll_reset_wall', 0.0))
             print(f"Loaded cooldown timers from {COOLDOWNS_FILE}")
     except FileNotFoundError:
@@ -383,16 +384,7 @@ def poke_roll(tide):
         pwait = 0
         
 def daily_message_check(slashchannel):
-    """Predicate for wait_for to capture our own daily slash response from Mudae.
-
-    Checks, in order:
-    1. Message channel id equals the provided slash channel.
-    2. Author id equals the global Mudae id.
-    3. Interaction user.username equals our username.
-    4. Interaction name equals 'daily'.
-    """
     slashchannel = str(slashchannel)
-
     def c(r):
         if r.event.message:
             m = r.parsed.auto()
@@ -414,11 +406,10 @@ def daily_message_check(slashchannel):
         return False
     return c
 
-
 def daily_roll_reset(slashchannel, slashguild, slash_daily_cmd):
-    # if slashchannel or slashguild is None:
-    #     logger.error(f"Could not find channel {slashchannel} or guild {slashguild}, will not collect daily roll reset.")
-    #     return
+    if not slashchannel or not slashguild:
+        logger.error(f"Could not find channel {slashchannel} or guild {slashguild}, will not collect daily roll reset.")
+        return
     global daily_roll_reset_wall
     while True:
         # Respect stored cooldown (single global timestamp)
@@ -632,7 +623,6 @@ def on_message(resp):
             c_settings['pending'] = aId
             return
         
-        
         elif int(aId) == mudae:
             if "interaction" in m:
                 # Mudae triggered via slash command
@@ -748,10 +738,10 @@ def on_message(resp):
                     if msg_buf[messageid]['claimed']:
                         return
                     print(f"Wished character named {charname} from {get_serial(chardes)} with {get_kak(chardes)} value in channel {guildid} has spawned!")
-                    waifu_wall[channelid] = next_claim(channelid)[0]
-                    save_cooldowns()
                     snipe(recv,snipe_delay)
                     snipe_intent(m,butts,channelid)
+                    waifu_wall[channelid] = next_claim(channelid)[0]
+                    save_cooldowns()
                     # if "reactions" in m_reacts:
                         # if m_reacts["reactions"][0]["emoji"]['id'] == None:
                             # bot.addReaction(channelid, messageid, m_reacts["reactions"][0]["emoji"]["name"])
