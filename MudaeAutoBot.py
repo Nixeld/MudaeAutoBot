@@ -64,6 +64,7 @@ like_finder = re.compile(r'Likes\: \#??([0-9]+)')
 claim_finder = re.compile(r'Claims\: \#??([0-9]+)')
 poke_finder = re.compile(r'\*\*(?:([0-9+])h )?([0-9]+)\*\* min')
 wait_finder = re.compile(r'\*\*(?:([0-9+])h )?([0-9]+)\*\* min \w')
+waitdaily_finder = re.compile(r'\*\*(?:(\d+)h )?(\d+)\*\* min\.?')
 waitk_finder = re.compile(r'\*\*(?:([0-9+])h )?([0-9]+)\*\* min')
 ser_finder = re.compile(r'.*.')
 
@@ -80,6 +81,41 @@ kakera_wall = {}
 waifu_wall = {}
 dailykakera_wall = {}
 resetclaimtimer_wall = {}
+daily_roll_reset_wall = 0.0
+
+COOLDOWNS_FILE = pathjoin('user', 'cooldowns.json')
+
+def load_cooldowns():
+    """Load cooldown timers from file."""
+    global kakera_wall, waifu_wall, dailykakera_wall, resetclaimtimer_wall, daily_roll_reset_wall
+    try:
+        with open(COOLDOWNS_FILE, 'r', encoding='utf-8') as f:
+            cooldowns = json.load(f)
+            kakera_wall = {int(k): float(v) for k, v in cooldowns.get('kakera_wall', {}).items()}
+            waifu_wall = {int(k): int(v) for k, v in cooldowns.get('waifu_wall', {}).items()}
+            dailykakera_wall = {int(k): float(v) for k, v in cooldowns.get('dailykakera_wall', {}).items()}
+            resetclaimtimer_wall = {int(k): float(v) for k, v in cooldowns.get('resetclaimtimer_wall', {}).items()}
+            daily_roll_reset_wall = float(cooldowns.get('daily_roll_reset_wall', 0.0))
+            print(f"Loaded cooldown timers from {COOLDOWNS_FILE}")
+    except FileNotFoundError:
+        print(f"Cooldowns file not found, starting with empty cooldowns.")
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"Error loading cooldowns: {e}. Starting with empty cooldowns.")
+
+def save_cooldowns():
+    """Save cooldown timers to file."""
+    try:
+        cooldowns = {
+            'kakera_wall': {str(k): v for k, v in kakera_wall.items()},
+            'waifu_wall': {str(k): v for k, v in waifu_wall.items()},
+            'dailykakera_wall': {str(k): v for k, v in dailykakera_wall.items()},
+            'resetclaimtimer_wall': {str(k): v for k, v in resetclaimtimer_wall.items()},
+            'daily_roll_reset_wall': daily_roll_reset_wall,
+        }
+        with open(COOLDOWNS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cooldowns, f, indent=2)
+    except Exception as e:
+        print(f"Error saving cooldowns: {e}")
 
 #logging settings
 logger = logging.getLogger(__name__)
@@ -88,6 +124,9 @@ formatter = logging.Formatter('%(asctime)s:%(message)s')
 stream_handler = logging.StreamHandler()
 stream_handler.setFormatter(formatter)
 logger.addHandler(stream_handler)
+
+# Load cooldowns from file at startup
+load_cooldowns()
 
 def get_kak(text):
     k_value = kak_finder.findall(text)
@@ -110,6 +149,13 @@ def get_kak(text):
     
 def get_wait(text):
     waits = wait_finder.findall(text)
+    if len(waits):
+        hours = int(waits[0][0]) if waits[0][0] != '' else 0
+        return (hours*60+int(waits[0][1]))*60
+    return 0
+
+def get_dailywait(text):
+    waits = waitdaily_finder.findall(text)
     if len(waits):
         hours = int(waits[0][0]) if waits[0][0] != '' else 0
         return (hours*60+int(waits[0][1]))*60
@@ -336,21 +382,78 @@ def poke_roll(tide):
         time.sleep(pwait) 
         pwait = 0
         
-def daily_roll(tide):
-    tides = str(tide)
-    if tide not in channel_settings:
-        logger.error(f"Could not find channel {tide}, will not collect daily roll reset.")
-        return
-    c_settings = channel_settings[tide]
-    dwait = 0
+def daily_message_check(slashchannel):
+    """Predicate for wait_for to capture our own daily slash response from Mudae.
+
+    Checks, in order:
+    1. Message channel id equals the provided slash channel.
+    2. Author id equals the global Mudae id.
+    3. Interaction user.username equals our username.
+    4. Interaction name equals 'daily'.
+    """
+    slashchannel = str(slashchannel)
+
+    def c(r):
+        if r.event.message:
+            m = r.parsed.auto()
+            # 1) Channel id must match slashchannel
+            if m.get('channel_id') != slashchannel:
+                return False
+            # 2) Author must be Mudae
+            if m.get('author', {}).get('id') != str(mudae):
+                return False
+            # 3) Interaction username must equal our username
+            inter = m.get('interaction')
+            inter_user = inter.get('user', {})
+            if inter_user.get('username') != user['username']:
+                return False
+            # 4) Interaction command name must be 'daily'
+            if inter.get('name') != 'daily':
+                return False
+            return True
+        return False
+    return c
+
+
+def daily_roll_reset(slashchannel, slashguild, slash_daily_cmd):
+    # if slashchannel or slashguild is None:
+    #     logger.error(f"Could not find channel {slashchannel} or guild {slashguild}, will not collect daily roll reset.")
+    #     return
+    global daily_roll_reset_wall
     while True:
-        while dwait == 0:
-            time.sleep(2)
-            bot.sendMessage(tides,c_settings['prefix']+"daily")
-            dwait = 20*60*60 # sleep for 20 hours
-        print(f"Collected daily roll reset in channel {tide}. Next claim in {dwait} seconds. (If you would like this in a different channel, please configure the desired channel ID as the first in your list)")
-        time.sleep(dwait) 
-        dwait = 0
+        # Respect stored cooldown (single global timestamp)
+        cooldown_remaining = daily_roll_reset_wall - time.time()
+        if cooldown_remaining > 0:
+            print(f"Daily roll reset on cooldown, {round(cooldown_remaining)} seconds until next claim.")
+            time.sleep(max(cooldown_remaining, 1))
+            continue
+
+        # Trigger daily slash command, using slashchannel (channel id) for both IDs as requested
+        bot.triggerSlashCommand(str(mudae), channelID=slashchannel, guildID=slashguild, data=slash_daily_cmd)
+        # Default: 30 minutes if timeout or invalid state/format
+        cooldown_seconds = 30 * 60
+        # Wait up to 5 seconds for Mudae's response specific to this daily
+        resp = wait_for(bot, daily_message_check(slashchannel), timeout=5)
+        if resp is None:
+            print(f"Failed to claim daily roll reset, retrying in {round(cooldown_seconds)} seconds.")
+        else:
+            content = resp.get('content', '')
+            # Successful daily uses ✅ – assume 20 hours cooldown
+            if '✅' in content:
+                cooldown_seconds = 20 * 60 * 60
+                print(f"Daily roll reset successfully claimed, {round(cooldown_seconds)} seconds until next claim.")
+            else:
+                # Parse cooldown text (e.g. "Next $daily reset in **8h 01** min.")
+                parsed_wait = get_dailywait(content)
+                if parsed_wait > 0:
+                    cooldown_seconds = parsed_wait
+                else:
+                    # Neither ✅ nor a recognizable cooldown text
+                    print(f"Failed to claim daily roll reset, retrying in {round(cooldown_seconds)} seconds.")
+                    print(content)
+        # Store cooldown timestamp and loop
+        daily_roll_reset_wall = time.time() + cooldown_seconds
+        save_cooldowns()
         
 def waifu_roll(tide,slashed,slashguild):
     global user
@@ -463,6 +566,7 @@ def snipe_intent(messagechunk, buttonspres, channelid):
         # Get claim time
         if get_pwait(newmessagechunk['content']):
             waifu_wall[channelid] = next_claim(channelid)[0]
+            save_cooldowns()
             print(f"{round(next_claim(channelid)[1] - time.time())} second(s) waifu claiming cooldown was set for channel {channelid}.")
     
         # Check if we should run the $rt command
@@ -472,9 +576,10 @@ def snipe_intent(messagechunk, buttonspres, channelid):
                 bot.removeReaction(messagechunk['channel_id'], messagechunk['id'], "❤")
                 bot.sendMessage(channelid, channel_settings[int(channelid)]['prefix'] + "rt")
                 resetclaimtimer_wall[channelid] = time.time() + reset_claim_timer_cooldown * 60 * 60  # Cooldown in hours
-                print(f"Ran reset claim timer command in channel {channelid}.")
                 # remove waifu_wall to snipe the character again
                 waifu_wall.pop(channelid, None)
+                save_cooldowns()
+                print(f"Ran reset claim timer command in channel {channelid}.")
                 # Attempt to snipe the character again
                 print(f"Attempting to snipe the character again in channel {channelid} after running $rt.")
                 snipe_intent(messagechunk, buttonspres, channelid)
@@ -543,6 +648,7 @@ def on_message(resp):
                     # get claim time
                     if get_pwait(m['content']):
                         waifu_wall[channelid] = next_claim(channelid)[0]
+                        save_cooldowns()
                         # print(f"{round(next_claim(channelid)[1] - time.time())} second(s) waifu claiming cooldown was set for channel {channelid}.")
                 return
                 
@@ -584,6 +690,7 @@ def on_message(resp):
                                 timegetter = (int(time_to_wait[0][0] or "0") * 60 + int(time_to_wait[0][1] or "0")) * 60
                                 print(f"{timegetter} second(s) kakera reaction cooldown was set for channel {guildid}.")
                                 kakera_wall[guildid] = timegetter + time.time()
+                                save_cooldowns()
                                 
                                 # Check if daily kakera command can be run
                                 daily_kakera_cooldown = dailykakera_wall.get(channelid, 0) - time.time()
@@ -591,6 +698,7 @@ def on_message(resp):
                                     bot.sendMessage(channelid, channel_settings[int(channelid)]['prefix'] + "dk")
                                     dailykakera_wall[channelid] = time.time() + 20 * 60 * 60  # 20 hours cooldown
                                     kakera_wall[guildid] = 0
+                                    save_cooldowns()
                                     print(f"Ran daily kakera command in channel {channelid}.")
                                     time.sleep(0.3)
                                     # Attempt to claim the kakera again
@@ -614,6 +722,7 @@ def on_message(resp):
                                         timegetter = (int(time_to_wait[0][0] or "0") * 60 + int(time_to_wait[0][1] or "0")) * 60
                                         print(f"{timegetter} second(s) kakera reaction cooldown was set for channel {guildid}")
                                         kakera_wall[guildid] = timegetter + time.time()
+                                        save_cooldowns()
                                 else:
                                     print(f"Skipped {buttMoji} in channel {guildid} due to kakera reaction and $dk cooldown.")
                         else:
@@ -640,6 +749,7 @@ def on_message(resp):
                         return
                     print(f"Wished character named {charname} from {get_serial(chardes)} with {get_kak(chardes)} value in channel {guildid} has spawned!")
                     waifu_wall[channelid] = next_claim(channelid)[0]
+                    save_cooldowns()
                     snipe(recv,snipe_delay)
                     snipe_intent(m,butts,channelid)
                     # if "reactions" in m_reacts:
@@ -665,6 +775,7 @@ def on_message(resp):
                 if charname.lower() in chars:
                     print(f"Attempting to snipe {charname} which is in your character name list in channel {guildid}.")
                     waifu_wall[channelid] = next_claim(channelid)[0]
+                    save_cooldowns()
                     snipe(recv,snipe_delay)
                     if msg_buf[messageid]['claimed']:
                         return
@@ -674,6 +785,7 @@ def on_message(resp):
                     if ser in chardes and charcolor == 16751916:
                         print(f"Attempting to snipe {charname} from {ser} which is in your series list in channel {guildid}.")
                         waifu_wall[channelid] = next_claim(channelid)[0]
+                        save_cooldowns()
                         snipe(recv,snipe_delay)
                         if msg_buf[messageid]['claimed']:
                             return
@@ -685,6 +797,7 @@ def on_message(resp):
                     if int(kak_value) >= kak_min and charcolor == 16751916:
                         print(f"{charname} with {kak_value} kakera value appeared in channel {guildid}.")
                         waifu_wall[channelid] = next_claim(channelid)[0]
+                        save_cooldowns()
                         snipe(recv,snipe_delay)
                         if msg_buf[messageid]['claimed']:
                             return
@@ -697,6 +810,7 @@ def on_message(resp):
                             print(f"{charname} with {kak_value} kakera value appeared in channel {guildid}.")
                             print(f"Attempting last minute claim.")
                             waifu_wall[channelid] = next_claim(channelid)[0]
+                            save_cooldowns()
                             snipe(recv,snipe_delay)
                             if msg_buf[messageid]['claimed']:
                                 return
@@ -725,6 +839,7 @@ def on_message(resp):
                 if f and user['username'] in f['text']:
                     # Successful claim, mark waifu claim window as used
                     waifu_wall[rchannelid] = next_claim(rchannelid)[0]
+                    save_cooldowns()
                 elif int(embed['color']) == 6753288:
                     # Someone else has just claimed this, mark as such
                     msg_buf[rmessageid]['claimed'] = True
@@ -827,15 +942,21 @@ def on_message(resp):
         guild_id = resp.parsed.auto()['guild_id']
         slashCmds = bot.getGuildSlashCommands(guild_id).json()["application_commands"]
         s = SlashCommander(slashCmds, application_id=str(mudae))
+        # Find both rolling slash and daily slash
+        global slash_daily_cmd
         for sli in range(len(s.commands.get("options"))):
-            if s.commands.get("options")[sli].get("name") == slash_prefix:
-                slashget = s.commands.get("options")[sli]
+            option = s.commands.get("options")[sli]
+            name = option.get("name")
+            if name == slash_prefix:
+                slashget = option
                 if settings['slash_rolling'].lower().strip() == "true" and slashget != None:
                     for xchg in range(len(shids)):
                         slashchannel = shids[xchg]
                         slashguild = ghids[xchg]
                         slashfus = threading.Timer(10.0,waifu_roll,args=[slashchannel,slashget,slashguild])
                         slashfus.start()
+            elif name == "daily":
+                slash_daily_cmd = option
             
     global ready
  
@@ -845,23 +966,15 @@ def on_message(resp):
             user = bot.gateway.session.user
             print(f"Logged in.")
         except KeyError:
-            try:
-                print(f"Unable to retrieve user information with Discum, using information from user.txt instead.")
-                with open(pathjoin('user','user.txt'),'r') as userssettings:
-                    user = json.loads(userssettings.read())
-            except:
-                print(f"There is a problem with your user.txt file, please make sure you have formatted it correctly. Refer to the example file for the correct format.")
+            print(f"Unable to retrieve user information with Discum. Please ensure you are using a updated version of Discum.")
+            raise
         bot.gateway.request.searchSlashCommands(str(ghids[0]), limit=100, query=slash_prefix)
         
         try:
             guilds = bot.gateway.session.settings_ready['guilds']
         except KeyError:
-            try:
-                print("Unable to retrieve guild information with Discum, using information from guild.txt instead.")
-                with open(pathjoin('user','guild.txt'),'r') as guildersettings:
-                    guilds = json.loads(guildersettings.read())
-            except:
-                print(f"There is a problem with your guild.txt file, please make sure you have formatted it correctly. Refer to the example file for the correct format.")
+            print("Unable to retrieve guild information with Discum. Please ensure you are using a updated version of Discum.")
+            raise
                 
         chs = set(str(mhid) for mhid in mhids)
         for gid, guild in guilds.items():
@@ -873,7 +986,7 @@ def on_message(resp):
         
         if settings['daily_claiming'].lower().strip() == "true":
             time.sleep(3)
-            d = threading.Thread(target=daily_roll,args=[mhids[0]])
+            d = threading.Thread(target=daily_roll_reset,args=[shids[0], ghids[0], slash_daily_cmd])
             d.start()
         if settings['poke_rolling'].lower().strip() == "true":
             time.sleep(3)

@@ -1,1 +1,0 @@
-{"username": "<your discord username without discriminators>", "id": "<your discord user id>"}

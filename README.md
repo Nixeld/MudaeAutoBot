@@ -4,10 +4,13 @@ MudaeAutoBot is a python bot that auto rolls and attempts to snipe Kakeras and C
 # Features
 + Snipes and claims Kakera in any Discord servers you're in that has Mudae#0807
 + Kakera value sniping as long as kakera value can be determined (e.g. Like Rank, Claim Rank, ## Kakera)
-+ Maximizes rolls by tracking roll timers
-+ Waifu/Husbando rolling
++ Maximizes rolls and claims by tracking timers
++ Waifu/Husbando rolling/slash rolling
 + Pokeslot rolling
++ Claiming daily roll reset
++ Using daily kakera to reset kakera reaction power
 + Selective Kakera Reaction Snipes Features (Includes: Soulmate Kak sniping Feature)
++ Selective character snipes features using character or series name
 + Mudae emoji reaction event sniping support
 
 ## How it works
@@ -28,30 +31,26 @@ If you do not want it to auto reconnect whenever MudaeAutoBot disconnects, you c
 # Configuration
 To configure the bot, you'll edit the variables in the `Settings_Mudae.json` file for your botting needs.<br />
 
-Discum may fail to retrieve user and server information for some people, when that happens you will need to: <br />
-+ Set your guild and channel ids in `guild.txt` found in the user folder.
-+ Set your username and user id in the `user.txt` found in the user folder.
-
 ## Bot settings
 All settings are set within the Settings_Mudae.json file.
 Some settings may be superseded by your Mudae server settings.
 
 + `token` - The user token for the account you want to bot on. If you need extra assistance on how to obtain it, let me know.
 + `channelids` - Which channels to **Prefix Roll** and **monitor**  e.g. 807##########948 (Channel ID)
-+ `slash_ids` - Which channels to **Slash roll** e.g. 807##########948 (Channel ID)
-+ `slash_guild_ids` - Which Guild to **Slash roll** e.g. 807##########948 (Server ID)
++ `slash_ids` - Which channels to **Slash roll** e.g. 807##########948 (Channel ID). Required for slash rolling and automatic claiming of daily roll reset, you may leave this empty if you do not need those.
++ `slash_guild_ids` - Which Guild to **Slash roll** e.g. 807##########948 (Server ID). Required for slash rolling and automatic claiming of daily roll reset, you may leave this empty if you do not need those.
 + `claim_delay` - _Affects servers w/o $setting instance_ Time in **seconds** to wait before attempting to Claim Characters e.g. 5
 + `kak_delay` - _Affects servers w/o $setting instance_ Time in **seconds** to wait before attempting to snipe Kakeraloot e.g. 8
 + `use_emoji` - This setting only works if you change the Mudaebot.py code by uncommenting out the line (Custom emojis only) e.g.  "<:emoji_name:795############214>"
 + `roll_this` - (m|ma|mg|w|wg|wa|h|ha|hg) If `rolling` is enabled it will roll this specific command e.g. '$wg'
-+ `slash_this` - (wa|wx|wg|hg|ha|mg|ma|mx) If `slash_rolling` is enabled it will roll this specific command e.g. '/wg'
++ `slash_this` - (wa|wx|wg|hg|ha|mg|ma|mx) If `slash_rolling` is enabled it will roll this specific command e.g. '/wg'. This requires you to setup your `slash_ids` and `slash_guild_ids`.
 + `rolling` - (True|False) **Case-sensitive**, uses `channelid` to **Prefix Roll**
-+ `slash_rolling` - (True|False) **Case-sensitive**, uses `slash_ids` to **Slash roll**
++ `slash_rolling` - (True|False) **Case-sensitive**, uses `slash_ids` to **Slash roll** This requires you to setup your `slash_ids` and `slash_guild_ids`.
 + `random_rolling` - (True|False) **Case-sensitive**, Random roll time between the each reset.
-+ `daily_kakera` - (True|False) **Case-sensitive**, Enables the bot to automatically run the $dk (daily kakera) command when kakera reaction cooldown is detected. Set to "True" to enable.
-+ `reset_claim_timer` - (True|False) **Case-sensitive**, If enabled, the bot will attempt to run the $rt command when it is needs to claim a character but it is still on cooldown. Set to "True" to enable.
++ `daily_kakera` - (True|False) **Case-sensitive**, Enables the bot to automatically run the $dk (daily kakera) command when kakera reaction cooldown is detected. 
++ `reset_claim_timer` - (True|False) **Case-sensitive**, If enabled, the bot will attempt to run the $rt command when it is needs to claim a character but it is still on cooldown.
 + `reset_claim_timer_cooldown` - (integer, in hours) Set this value to your cooldown time for the $rt command. You can find your cooldown time by running $bonus.
-+ `daily_claiming` - (True|False) **Case-sensitive**, Trigger $daily command everyday
++ `daily_claiming` - (True|False) **Case-sensitive**, Automatically claim daily roll reset whenever it is available. This requires you to setup your `slash_ids` and `slash_guild_ids`. It will run /daily in the first channel set in your `slash_ids`.
 + `poke_rolling` - (True|False) **Case-sensitive**, Pokeslot rolling enabled, uses `channelid`
 + `series_list` - **Case-sensitive** Name of series of characters you want to claim  e.g. \[ "Honkai Impact 3rd" , "Senran Kagura" \]
 + `name_list` - **Must be exact match** List of specific character names to claim  e.g. \["Raiden Mei", "gOkU" \]
@@ -62,8 +61,8 @@ Some settings may be superseded by your Mudae server settings.
 + `min_kak_last_min` - same as min kak but only within the last minute claim window
 
 # Optimize the snipes
-Typing $settings in your server with mudae should give you the snipe and kaksnipping timers.
-Using these values you usually snipes faster than a "Human" user can react 
+~~Typing $settings in your server with mudae should give you the snipe and kaksnipping timers.
+Using these values you usually snipes faster than a "Human" user can react ~~
 
 Please when settings delays avoid setting 0 as your delay as it might be to fast for mudae
 a minimum of 1 second to let mudae register that a character was rolled as is reacted to.
