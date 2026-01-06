@@ -54,6 +54,7 @@ reset_claim_timer = True if settings["reset_claim_timer"].lower().strip() == "tr
 reset_claim_timer_cooldown = settings["reset_claim_timer_cooldown"]
 sniping = settings.get("sniping_enabled",True)
 auto_accept_gifts = True if settings.get("auto_accept_gifts", "True").lower().strip() == "true" else False
+free_kakera = True if settings.get("free_kakera", "True").lower().strip() == "true" else False
 
 ready = bot.gateway.READY
 
@@ -672,8 +673,11 @@ def on_message(resp):
                         time.sleep(snipe_delay)
                     for butt in butts.components[0]["components"]:
                         buttMoji = butt["emoji"]["name"]
-                        # Claim kakera if it is in emoji list or soul emoji list after validation. If kakeraP is in any of the list, it will be claimed without checking cooldown.
-                        if (buttMoji.lower() in KakeraVari and cooldown <= 0) or (buttMoji.lower() in soulLink and cooldown <= 0 and user['username'] in kakera_message.get('footer')['text'] and "<:chaoskey:690110264166842421>" in kakera_message['description']) or (buttMoji.lower() == "kakerap" and ("kakerap" in KakeraVari or "kakerap" in soulLink)):
+                        # Check if free_kakera is enabled and whether the button is a free kakera button
+                        if free_kakera:
+                            free = buttMoji.lower() == "kakerap" or butt["style"] == 3
+                        # Claim kakera if conditions met
+                        if (buttMoji.lower() in KakeraVari and cooldown <= 0) or (buttMoji.lower() in soulLink and cooldown <= 0 and user['username'] in kakera_message.get('footer')['text'] and "<:chaoskey:690110264166842421>" in kakera_message['description']) or free:
                             time.sleep(0.3)
                             customid = butt["custom_id"]
                             bot.click(

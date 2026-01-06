@@ -53,7 +53,8 @@
    "last_true":"True",
    "last_claim_min": 61,
    "min_kak_last_min": 10,
-   "auto_accept_gifts":"True"
+   "auto_accept_gifts":"True",
+   "free_kakera":"True"
 }
 
 

@@ -60,6 +60,7 @@ Some settings may be superseded by your Mudae server settings.
 + `last_claim_min` - (1-180) the time the window is open for e.g. 10 means last 10 minutes
 + `min_kak_last_min` - same as min kak but only within the last minute claim window
 + `auto_accept_gifts` - (True|False) Automatically accept free characters gifts from the $give command, requires you to have unlocked Enhanced multitrade
++ `free_kakera` - (True|False) Automatically claim kakeraP and free kakera spawned from Chaos kakera
 
 # Optimize the snipes
 ~~Typing $settings in your server with mudae should give you the snipe and kaksnipping timers.~~
