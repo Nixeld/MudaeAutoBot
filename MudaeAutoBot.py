@@ -612,7 +612,7 @@ def on_message(resp):
         m = resp.parsed.auto()
         aId = m['author']['id']
         content = m['content']
-        embeds = m['embeds'][0]
+        embeds = m['embeds']
         messageid = m['id']
         channelid = m['channel_id']
         
@@ -753,7 +753,7 @@ def on_message(resp):
             
             # Mudae reaction event
             if react_event:
-                raw_description = embeds["rawDescription"]
+                raw_description = embeds[0]["description"]
                 # Normalize newlines to spaces for comparison
                 normalized_description = raw_description.replace("\n", " ")
                 if "React on me, it's free!" in normalized_description:
