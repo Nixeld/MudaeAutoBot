@@ -55,6 +55,7 @@ reset_claim_timer_cooldown = settings["reset_claim_timer_cooldown"]
 sniping = settings.get("sniping_enabled",True)
 auto_accept_gifts = True if settings.get("auto_accept_gifts", "True").lower().strip() == "true" else False
 free_kakera = True if settings.get("free_kakera", "True").lower().strip() == "true" else False
+react_event = True if settings.get("react_event", "True").lower().strip() == "true" else False
 
 ready = bot.gateway.READY
 
@@ -194,7 +195,7 @@ def mudae_warning(tide,StartwithUser=True):
     def c(r):
         if r.event.message:
             r = r.parsed.auto()
-            # must be from relevant channel id, and start with username
+            # must be sent from mudae, relevant channel id and start with our username
             if StartwithUser == True:
                 return r['author']['id'] == str(mudae) and r['channel_id'] == tide and r['content'].startswith(f"**{user['username']}")
             elif StartwithUser == False:
@@ -206,7 +207,7 @@ def claim_check(channel_id):
     def c(r):
         if r.event.message:
             r = r.parsed.auto()
-            # must be from relevant channel id and message sent from mudae
+            # must be sent from mudae and relevant channel id,
             if r['author']['id'] == str(mudae) and r['channel_id'] == channel_id:
                 # return true if relevant claim message
                 return (r['content'].startswith('<@' + user['id'] + '>') and "you can claim once per interval" in r['content']) or r['content'].startswith(f"*💖 *{user['username']}")
@@ -474,6 +475,7 @@ def waifu_roll(tide,slashed,slashguild):
     roll_cmd = c_settings['prefix'] + roll_prefix
     
     warned_overroll = False
+    # TODO Add persistent cooldown tracking for waifu rolls
     while True:
         wait_for_quiet = wait_for(bot,mudae_warning(tides,False),timeout=10)
         if wait_for_quiet != None:
@@ -610,7 +612,7 @@ def on_message(resp):
         m = resp.parsed.auto()
         aId = m['author']['id']
         content = m['content']
-        embeds = m['embeds']
+        embeds = m['embeds'][0]
         messageid = m['id']
         channelid = m['channel_id']
         
@@ -749,6 +751,26 @@ def on_message(resp):
                 # confirmed user roll
                 c_settings['rolls'] += 1
             
+            # Mudae reaction event
+            if react_event:
+                raw_description = embeds["rawDescription"]
+                # Normalize newlines to spaces for comparison
+                normalized_description = raw_description.replace("\n", " ")
+                if "React on me, it's free!" in normalized_description:
+                    if butts.components != []:
+                        custom_id = butts.components[0]["components"][0]["custom_id"]
+                        if custom_id:
+                            print(f"Event character from {raw_description} detected in channel {channelid}, reacting to it.")
+                            bot.click(
+                                aId,
+                                channelID=m["channel_id"],
+                                guildID=m.get("guild_id"),
+                                messageID=m["id"],
+                                messageFlags=m["flags"],
+                                data=butts.getButton(customID=custom_id),
+                            )
+                            return
+
             # Waifu claiming
             claiming_cooldown = waifu_wall.get(channelid, 0) - time.time()
             if claiming_cooldown <= 0:
@@ -985,6 +1007,7 @@ def on_message(resp):
         except KeyError:
             print(f"Unable to retrieve user information with Discum. Please ensure you are using a updated version of Discum.")
             raise
+        # Rate limit of 1 request every 5 seconds
         bot.gateway.request.searchSlashCommands(str(ghids[0]), limit=100, query=slash_prefix)
         
         try:

@@ -3,15 +3,16 @@ MudaeAutoBot is a python bot that auto rolls and attempts to snipe Kakeras and C
 
 # Features
 + Snipes and claims Kakera in any Discord servers you're in that has Mudae#0807
-+ Kakera value sniping as long as kakera value can be determined (e.g. Like Rank, Claim Rank, ## Kakera)
++ Kakera value sniping as long as Kakera value can be determined (e.g. Like Rank, Claim Rank, ## Kakera)
 + Maximizes rolls and claims by tracking timers
 + Waifu/Husbando rolling/slash rolling
++ Random roll timings to make it look more human
 + Pokeslot rolling
 + Claiming daily roll reset
-+ Using daily kakera to reset kakera reaction power
-+ Selective Kakera Reaction Snipes Features (Includes: Soulmate Kak sniping Feature)
++ Using daily Kakera to reset kakera reaction power
++ Selective Kakera reaction snipe features (Includes: Soulmate Kakera sniping)
 + Selective character snipes features using character or series name
-+ Mudae emoji reaction event sniping support
++ Automatically react on Mudae event characters (eg. Christmas Art Contest 2024 - React on me, it's free!)
 
 ## How it works
 All this bot needs to work is your Discord token, channel IDs and server IDs that you want to roll in.
@@ -61,6 +62,7 @@ Some settings may be superseded by your Mudae server settings.
 + `min_kak_last_min` - same as min kak but only within the last minute claim window
 + `auto_accept_gifts` - (True|False) Automatically accept free characters gifts from the $give command, requires you to have unlocked Enhanced multitrade
 + `free_kakera` - (True|False) Automatically claim kakeraP and free kakera spawned from Chaos kakera
++ `react_event` - (True|False) Automatically react on Mudae event characters (eg. Christmas Art Contest 2024 - React on me, it's free!)
 
 # Optimize the snipes
 ~~Typing $settings in your server with mudae should give you the snipe and kaksnipping timers.~~

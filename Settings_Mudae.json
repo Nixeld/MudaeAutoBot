@@ -29,8 +29,7 @@
       "Raiden Mei"
    ],
    "emoji_list":[
-      "kakera",	
-      "kakeraP",	
+      "kakera",		
       "kakeraT",
       "kakeraG",
       "kakeraY",
@@ -54,7 +53,8 @@
    "last_claim_min": 61,
    "min_kak_last_min": 10,
    "auto_accept_gifts":"True",
-   "free_kakera":"True"
+   "free_kakera":"True",
+   "react_event":"True"
 }
 
 
