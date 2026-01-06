@@ -37,18 +37,23 @@
       "kakeraO",
       "kakeraR",
       "kakeraW",
-      "kakeraL"
+      "kakeraL",
+      "kakeraD2",
+      "kakeraC2"
    ],
    "soulemoji_list":[
       "kakeraO",
       "kakeraR",
       "KakeraW",
-      "KakeraL"
+      "KakeraL",
+      "kakeraD2",
+      "kakeraC2"
    ],
    "min_kak":500,
    "last_true":"True",
    "last_claim_min": 61,
-   "min_kak_last_min": 10
+   "min_kak_last_min": 10,
+   "auto_accept_gifts":"True"
 }
 
 
