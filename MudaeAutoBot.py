@@ -201,6 +201,17 @@ def mudae_warning(tide,StartwithUser=True):
         return False
     return c
 
+def claim_check(channel_id):
+    def c(r):
+        if r.event.message:
+            r = r.parsed.auto()
+            # must be from relevant channel id and message sent from mudae
+            if r['author']['id'] == str(mudae) and r['channel_id'] == channel_id:
+                # return true if relevant claim message
+                return (r['content'].startswith('<@' + user['id'] + '>') and "you can claim once per interval" in r['content']) or r['content'].startswith(f"*💖 *{user['username']}")
+        return False
+    return c
+
 def msg_checking(msgcontent):
     msgtocheck = ["maintenance"] #list to check incase bot is down
     msgcontent = str(msgcontent)
@@ -419,11 +430,9 @@ def daily_roll_reset(slashchannel, slashguild, slash_daily_cmd):
             time.sleep(max(cooldown_remaining, 1))
             continue
 
-        # Trigger daily slash command, using slashchannel (channel id) for both IDs as requested
         bot.triggerSlashCommand(str(mudae), channelID=slashchannel, guildID=slashguild, data=slash_daily_cmd)
         # Default: 30 minutes if timeout or invalid state/format
         cooldown_seconds = 30 * 60
-        # Wait up to 5 seconds for Mudae's response specific to this daily
         resp = wait_for(bot, daily_message_check(slashchannel), timeout=5)
         if resp is None:
             print(f"Failed to claim daily roll reset, retrying in {round(cooldown_seconds)} seconds.")
@@ -550,32 +559,36 @@ def snipe_character(messagechunk, buttonspres, channelid):
     else:
         bot.addReaction(messagechunk['channel_id'], messagechunk['id'], "❤")
     
-    # TODO: Add error handling in an event when it misses the expected message
-    newmessagechunk = wait_for(bot, mudae_warning(channelid, True), timeout=5)
-    # Check if it is claim timer
-    if "you can claim once per interval" in newmessagechunk['content']:
-        # Get claim time
-        if get_pwait(newmessagechunk['content']):
-            waifu_wall[channelid] = next_claim(channelid)[0]
-            save_cooldowns()
-            print(f"{round(next_claim(channelid)[1] - time.time())} second(s) waifu claiming cooldown was set for channel {channelid}.")
-    
-        # Check if we should run the $rt command
-        if reset_claim_timer:
-            reset_claim_timer_cooldown_time = resetclaimtimer_wall.get(channelid, 0) - time.time()
-            if reset_claim_timer_cooldown_time <= 0:
-                bot.removeReaction(messagechunk['channel_id'], messagechunk['id'], "❤")
-                bot.sendMessage(channelid, channel_settings[int(channelid)]['prefix'] + "rt")
-                resetclaimtimer_wall[channelid] = time.time() + reset_claim_timer_cooldown * 60 * 60  # Cooldown in hours
-                # remove waifu_wall to snipe the character again
-                waifu_wall.pop(channelid, None)
+    # newmessagechunk = wait_for(bot, lambda m: mudae_warning(channelid, True) and 'content' in m.parsed.auto() and 'claim' in m.parsed.auto()['content'], timeout=5)
+    newmessagechunk = wait_for(bot, claim_check(channelid), timeout=5)
+    if newmessagechunk is None:
+        waifu_wall.pop(channelid, None)
+        save_cooldowns()
+    else:
+        # Check if it is claim timer
+        if "you can claim once per interval" in newmessagechunk['content']:
+            # Get claim time
+            if get_pwait(newmessagechunk['content']):
+                waifu_wall[channelid] = next_claim(channelid)[1]
                 save_cooldowns()
-                print(f"Ran reset claim timer command in channel {channelid}.")
-                # Attempt to snipe the character again
-                print(f"Attempting to snipe the character again in channel {channelid} after running $rt.")
-                snipe_character(messagechunk, buttonspres, channelid)
+                print(f"{round(next_claim(channelid)[1] - time.time())} second(s) waifu claiming cooldown was set for channel {channelid}.")
+        
+            # Check if we should run the $rt command
+            if reset_claim_timer:
+                reset_claim_timer_cooldown_time = resetclaimtimer_wall.get(channelid, 0) - time.time()
+                if reset_claim_timer_cooldown_time <= 0:
+                    bot.removeReaction(messagechunk['channel_id'], messagechunk['id'], "❤")
+                    bot.sendMessage(channelid, channel_settings[int(channelid)]['prefix'] + "rt")
+                    resetclaimtimer_wall[channelid] = time.time() + reset_claim_timer_cooldown * 60 * 60  # Cooldown in hours
+                    print(f"Ran reset claim timer command in channel {channelid}.")
+                    # Attempt to snipe the character again
+                    print(f"Attempting to snipe the character again in channel {channelid} after running $rt.")
+                    snipe_character(messagechunk, buttonspres, channelid)
+            else:
+                    print(f"Skipped running $rt in channel {channelid} due to cooldown.")
         else:
-                print(f"Skipped running $rt in channel {channelid} due to cooldown.")
+            # Successful claim message
+            print(f"Successfully claimed character in channel {channelid}.")
 
 def is_rolled_char(m):
     embeds = m.get('embeds',[])
@@ -636,7 +649,7 @@ def on_message(resp):
                 if content_starts_with_mention:
                     # get claim time
                     if get_pwait(m['content']):
-                        waifu_wall[channelid] = next_claim(channelid)[0]
+                        waifu_wall[channelid] = next_claim(channelid)[1]
                         save_cooldowns()
                         # print(f"{round(next_claim(channelid)[1] - time.time())} second(s) waifu claiming cooldown was set for channel {channelid}.")
                         
@@ -660,7 +673,7 @@ def on_message(resp):
                     for butt in butts.components[0]["components"]:
                         buttMoji = butt["emoji"]["name"]
                         # Claim kakera if it is in emoji list or soul emoji list after validation. If kakeraP is in any of the list, it will be claimed without checking cooldown.
-                        if (buttMoji.lower() in KakeraVari and cooldown <= 1) or (buttMoji.lower() in soulLink and cooldown <= 1 and user['username'] in kakera_message.get('footer')['text'] and "<:chaoskey:690110264166842421>" in kakera_message['description']) or (buttMoji.lower() == "kakerap" and ("kakerap" in KakeraVari or "kakerap" in soulLink)):
+                        if (buttMoji.lower() in KakeraVari and cooldown <= 0) or (buttMoji.lower() in soulLink and cooldown <= 0 and user['username'] in kakera_message.get('footer')['text'] and "<:chaoskey:690110264166842421>" in kakera_message['description']) or (buttMoji.lower() == "kakerap" and ("kakerap" in KakeraVari or "kakerap" in soulLink)):
                             time.sleep(0.3)
                             customid = butt["custom_id"]
                             bot.click(
@@ -732,7 +745,9 @@ def on_message(resp):
                 # confirmed user roll
                 c_settings['rolls'] += 1
             
-            if waifu_wall.get(channelid,0) != next_claim(channelid)[0]:
+            # Waifu claiming
+            claiming_cooldown = waifu_wall.get(channelid, 0) - time.time()
+            if claiming_cooldown <= 0:
                 snipe_delay = get_snipe_time(int(channelid),roller,content)
                 charpop = m['embeds'][0]
                 charname = charpop["author"]["name"]
@@ -743,6 +758,8 @@ def on_message(resp):
                     if msg_buf[messageid]['claimed']:
                         return
                     print(f"Wished character named {charname} from {get_serial(chardes)} with {get_kak(chardes)} value in channel {guildid} has spawned!")
+                    waifu_wall[channelid] = next_claim(channelid)[1]
+                    save_cooldowns()
                     snipe_character_delay(recv, snipe_delay)
                     snipe_character(m, butts, channelid)
                     # if "reactions" in m_reacts:
@@ -767,6 +784,8 @@ def on_message(resp):
                 
                 if charname.lower() in chars:
                     print(f"Attempting to snipe {charname} which is in your character name list in channel {guildid}.")
+                    waifu_wall[channelid] = next_claim(channelid)[1]
+                    save_cooldowns()
                     snipe_character_delay(recv, snipe_delay)
                     if msg_buf[messageid]['claimed']:
                         return
@@ -775,17 +794,19 @@ def on_message(resp):
                 for ser in series_list:
                     if ser in chardes and charcolor == 16751916:
                         print(f"Attempting to snipe {charname} from {ser} which is in your series list in channel {guildid}.")
+                        waifu_wall[channelid] = next_claim(channelid)[1]
+                        save_cooldowns()
                         snipe_character_delay(recv, snipe_delay)
                         if msg_buf[messageid]['claimed']:
                             return
                         snipe_character(m, butts, channelid)
 
-         
+
                 if "<:kakera:469835869059153940>" in chardes or "Claims:" in chardes or "Likes:" in chardes:
                     kak_value = get_kak(chardes)
                     if int(kak_value) >= kak_min and charcolor == 16751916:
                         print(f"{charname} with {kak_value} kakera value appeared in channel {guildid}.")
-                        waifu_wall[channelid] = next_claim(channelid)[0]
+                        waifu_wall[channelid] = next_claim(channelid)[1]
                         save_cooldowns()
                         snipe_character_delay(recv, snipe_delay)
                         if msg_buf[messageid]['claimed']:
@@ -798,7 +819,7 @@ def on_message(resp):
                         if int(kak_value) >= min_kak_last and charcolor == 16751916:
                             print(f"{charname} with {kak_value} kakera value appeared in channel {guildid}.")
                             print(f"Attempting last minute claim.")
-                            waifu_wall[channelid] = next_claim(channelid)[0]
+                            waifu_wall[channelid] = next_claim(channelid)[1]
                             save_cooldowns()
                             snipe_character_delay(recv, snipe_delay)
                             if msg_buf[messageid]['claimed']:
@@ -827,11 +848,14 @@ def on_message(resp):
                 f = embed.get('footer')
                 if f and user['username'] in f['text']:
                     # Successful claim, mark waifu claim window as used
-                    waifu_wall[rchannelid] = next_claim(rchannelid)[0]
+                    print(f"Successfully detected claimed character in channel {rchannelid}.")
+                    waifu_wall[rchannelid] = next_claim(rchannelid)[1]
                     save_cooldowns()
                 elif int(embed['color']) == 6753288:
                     # Someone else has just claimed this, mark as such
                     msg_buf[rmessageid]['claimed'] = True
+                    waifu_wall.pop(rchannelid, None)
+                    save_cooldowns()
         except KeyError:
             pass
 
