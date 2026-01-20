@@ -54,7 +54,7 @@ reset_claim_timer = True if settings["reset_claim_timer"].lower().strip() == "tr
 reset_claim_timer_cooldown = settings["reset_claim_timer_cooldown"]
 sniping = settings.get("sniping_enabled",True)
 auto_accept_gifts = True if settings.get("auto_accept_gifts", "True").lower().strip() == "true" else False
-free_kakera = True if settings.get("free_kakera", "True").lower().strip() == "true" else False
+claim_free = True if settings.get("claim_free", "True").lower().strip() == "true" else False
 react_event = True if settings.get("react_event", "True").lower().strip() == "true" else False
 
 ready = bot.gateway.READY
@@ -74,6 +74,7 @@ ser_finder = re.compile(r'.*.')
 KakeraVari = [kakerav.lower() for kakerav in settings["emoji_list"]]
 soulLink = [soulkakerav.lower() for soulkakerav in settings["soulemoji_list"]]
 eventlist = ["🕯️","😆","🍫","🎀","🧸","🎄"]
+ouroSpheres = ["spB2", "spT2", "spG2", "spY2", "spO2", "spR2", "spL2", "spD2"]
 
 #Last min Claims
 is_last_enable = True if settings["last_true"].lower().strip() == "true" else False 
@@ -565,6 +566,7 @@ def snipe_character(messagechunk, buttonspres, channelid):
     # newmessagechunk = wait_for(bot, lambda m: mudae_warning(channelid, True) and 'content' in m.parsed.auto() and 'claim' in m.parsed.auto()['content'], timeout=5)
     newmessagechunk = wait_for(bot, claim_check(channelid), timeout=5)
     if newmessagechunk is None:
+        # Character might be claimed by someone else
         waifu_wall.pop(channelid, None)
         save_cooldowns()
     else:
@@ -585,13 +587,12 @@ def snipe_character(messagechunk, buttonspres, channelid):
                     resetclaimtimer_wall[channelid] = time.time() + reset_claim_timer_cooldown * 60 * 60  # Cooldown in hours
                     print(f"Ran reset claim timer command in channel {channelid}.")
                     # Attempt to snipe the character again
+                    waifu_wall[channelid] = next_claim(channelid)[1]
+                    save_cooldowns()
                     print(f"Attempting to snipe the character again in channel {channelid} after running $rt.")
                     snipe_character(messagechunk, buttonspres, channelid)
-            else:
+                else:
                     print(f"Skipped running $rt in channel {channelid} due to cooldown.")
-        else:
-            # Successful claim message
-            print(f"Successfully claimed character in channel {channelid}.")
 
 def is_rolled_char(m):
     embeds = m.get('embeds',[])
@@ -676,8 +677,8 @@ def on_message(resp):
                     for butt in butts.components[0]["components"]:
                         buttMoji = butt["emoji"]["name"]
                         # Check if free_kakera is enabled and whether the button is a free kakera button
-                        if free_kakera:
-                            free = buttMoji.lower() == "kakerap" or butt["style"] == 3
+                        if claim_free:
+                            free = buttMoji.lower() == "kakerap" or butt["style"] == 3 or buttMoji in ouroSpheres
                         # Claim kakera if conditions met
                         if (buttMoji.lower() in KakeraVari and cooldown <= 0) or (buttMoji.lower() in soulLink and cooldown <= 0 and user['username'] in kakera_message.get('footer')['text'] and "<:chaoskey:690110264166842421>" in kakera_message['description']) or free:
                             time.sleep(0.3)
@@ -754,7 +755,7 @@ def on_message(resp):
             # Mudae reaction event
             if react_event:
                 raw_description = embeds[0]["description"]
-                # Normalize newlines to spaces for comparison
+                # Normalize newlines to spaces for checking
                 normalized_description = raw_description.replace("\n", " ")
                 if "React on me, it's free!" in normalized_description:
                     if butts.components != []:
@@ -874,7 +875,7 @@ def on_message(resp):
                 f = embed.get('footer')
                 if f and user['username'] in f['text']:
                     # Successful claim, mark waifu claim window as used
-                    print(f"Successfully detected claimed character in channel {rchannelid}.")
+                    print(f"Successfully claimed character in channel {rchannelid}.")
                     waifu_wall[rchannelid] = next_claim(rchannelid)[1]
                     save_cooldowns()
                 elif int(embed['color']) == 6753288:
