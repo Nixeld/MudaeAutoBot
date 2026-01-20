@@ -28,26 +28,25 @@
    "name_list":[
       "Raiden Mei"
    ],
-   "emoji_list":[
-      "kakera",		
-      "kakeraT",
-      "kakeraG",
-      "kakeraY",
-      "kakeraO",
-      "kakeraR",
-      "kakeraW",
-      "kakeraL",
-      "kakeraD2",
-      "kakeraC2"
-   ],
-   "soulemoji_list":[
-      "kakeraO",
-      "kakeraR",
-      "KakeraW",
-      "KakeraL",
-      "kakeraD2",
-      "kakeraC2"
-   ],
+   "kakera_list": {
+      "100": [
+         
+      ],
+      "50": [
+         "kakeraO",
+         "kakeraR",
+         "kakeraW",
+         "kakeraL",
+         "kakeraD2",
+         "kakeraC2"
+      ],
+      "25": [
+         "kakera",
+         "kakeraT",
+         "kakeraG",
+         "kakeraY"
+      ]
+   },
    "min_kak":500,
    "last_true":"True",
    "last_claim_min": 61,

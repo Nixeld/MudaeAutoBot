@@ -71,8 +71,13 @@ waitdaily_finder = re.compile(r'\*\*(?:(\d+)h )?(\d+)\*\* min\.?')
 waitk_finder = re.compile(r'\*\*(?:([0-9+])h )?([0-9]+)\*\* min')
 ser_finder = re.compile(r'.*.')
 
-KakeraVari = [kakerav.lower() for kakerav in settings["emoji_list"]]
-soulLink = [soulkakerav.lower() for soulkakerav in settings["soulemoji_list"]]
+raw_kakera_list = settings.get("kakera_list")
+if not raw_kakera_list:
+    raise KeyError("Missing required setting: kakera_list")
+kakera_list = {
+    int(str(cost)): [k.lower() for k in emojis]
+    for cost, emojis in raw_kakera_list.items()
+}
 eventlist = ["🕯️","😆","🍫","🎀","🧸","🎄"]
 ouroSpheres = ["spB2", "spT2", "spG2", "spY2", "spO2", "spR2", "spL2", "spD2"]
 
@@ -176,6 +181,19 @@ def get_pwait(text):
 def get_serial(text):
     serk = ser_finder.findall(text)
     return serk[0]
+
+def get_kakera_cost(kakera_message):
+    # Return the effective kakera cost as a percentage integer.
+    cost = 100
+    description = kakera_message.get('description', '') or ''
+    footer = kakera_message.get('footer') or {}
+    footer_text = footer.get('text', '') or ''
+
+    if "💎 ➗" in description:
+        cost = cost * 50 // 100
+    if user['username'] in footer_text and "<:chaoskey:690110264166842421>" in description:
+        cost = cost * 50 // 100
+    return cost
 
 _resp = dict()
 def wait_for(bot, predicate, timeout=None):
@@ -676,12 +694,19 @@ def on_message(resp):
                         time.sleep(snipe_delay)
                     for butt in butts.components[0]["components"]:
                         buttMoji = butt["emoji"]["name"]
+                        buttMoji_lower = buttMoji.lower()
                         # Check if free_kakera is enabled and whether the button is a free kakera button
                         if claim_free:
-                            free = buttMoji.lower() == "kakerap" or butt["style"] == 3 or buttMoji in ouroSpheres
-                        # Claim kakera if conditions met
-                        if (buttMoji.lower() in KakeraVari and cooldown <= 0) or (buttMoji.lower() in soulLink and cooldown <= 0 and user['username'] in kakera_message.get('footer')['text'] and "<:chaoskey:690110264166842421>" in kakera_message['description']) or free:
-                            time.sleep(0.3)
+                            free = buttMoji_lower == "kakerap" or butt["style"] == 3 or buttMoji in ouroSpheres
+                        else:
+                            free = False
+
+                        cost = get_kakera_cost(kakera_message)
+                        allowed_emojis_for_cost = kakera_list.get(cost, [])
+                        allowed_by_cost = buttMoji_lower in allowed_emojis_for_cost
+
+                        # Only claim kakera that match the configured cost or free kakera
+                        if (allowed_by_cost and cooldown <= 0) or free:
                             customid = butt["custom_id"]
                             bot.click(
                                 aId,
@@ -740,6 +765,7 @@ def on_message(resp):
                                         save_cooldowns()
                                 else:
                                     print(f"Skipped {buttMoji} in channel {guildid} due to kakera reaction and $dk cooldown.")
+                            time.sleep(0.3)
                         else:
                             print(f"Skipped {buttMoji} in channel {guildid}.")
                 return
