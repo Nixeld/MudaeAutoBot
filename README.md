@@ -55,7 +55,7 @@ Some settings may be superseded by your Mudae server settings.
 + `poke_rolling` - (True|False) **Case-sensitive**, Pokeslot rolling enabled, uses `channelid`
 + `series_list` - **Case-sensitive** Name of series of characters you want to claim  e.g. \[ "Honkai Impact 3rd" , "Senran Kagura" \]
 + `name_list` - **Must be exact match** List of specific character names to claim  e.g. \["Raiden Mei", "gOkU" \]
-+ `kakera_list` - The bot will only claim kakera at the cost you configure. Kakera reaction cost is determined based on $infokeys level 10 and $op perk 8. \[ "KakeraY" , "KakeraO" \] << This example means only snipe Yellow and orange Kakera
++ `kakera_list` - Claim kakera at the cost you configure. Kakera reaction cost can be affected by $infokeys level 10 and $op perk 8. \[ "KakeraY" , "KakeraO" \] << This example means only snipe Yellow and orange Kakera
 + `min_kak` - A minimum kakera value to snipe a claimable character _regardless of whether it's in the series/name lists_
 + `last_true` -  (True|False) Enable last minute claim window
 + `last_claim_min` - (1-180) the time the window is open for e.g. 10 means last 10 minutes

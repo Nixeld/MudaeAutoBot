@@ -449,7 +449,6 @@ def daily_roll_reset(slashchannel, slashguild, slash_daily_cmd):
         if cooldown_remaining > 0:
             print(f"Daily roll reset on cooldown, {round(cooldown_remaining)} seconds until next claim.")
             time.sleep(max(cooldown_remaining, 1))
-            continue
 
         bot.triggerSlashCommand(str(mudae), channelID=slashchannel, guildID=slashguild, data=slash_daily_cmd)
         # Default: 30 minutes if timeout or invalid state/format
@@ -472,9 +471,13 @@ def daily_roll_reset(slashchannel, slashguild, slash_daily_cmd):
                     # Neither ✅ nor a recognizable cooldown text
                     print(f"Failed to claim daily roll reset, retrying in {round(cooldown_seconds)} seconds.")
                     print(content)
-        # Store cooldown timestamp and loop
+        # Store cooldown timestamp
         daily_roll_reset_wall = time.time() + cooldown_seconds
         save_cooldowns()
+        # Sleep until cooldown expires before next loop iteration to avoid immediate re-check
+        cooldown_remaining = daily_roll_reset_wall - time.time()
+        if cooldown_remaining > 0:
+            time.sleep(cooldown_remaining)
         
 def waifu_roll(tide,slashed,slashguild):
     global user
@@ -740,7 +743,7 @@ def on_message(resp):
                                     kakera_wall[guildid] = 0
                                     save_cooldowns()
                                     print(f"Ran daily kakera command in channel {channelid}.")
-                                    time.sleep(0.3)
+                                    time.sleep(1)
                                     # Attempt to claim the kakera again
                                     bot.click(
                                         aId,
