@@ -708,8 +708,8 @@ def on_message(resp):
                         allowed_emojis_for_cost = kakera_list.get(cost, [])
                         allowed_by_cost = buttMoji_lower in allowed_emojis_for_cost
 
-                        # Only claim kakera that match the configured cost or free kakera
-                        if (allowed_by_cost and cooldown <= 0) or free:
+                        # Only claim kakera that match the configured cost or free kakera or emoji part of a reaction event
+                        if (allowed_by_cost and cooldown <= 0) or free or (react_event and buttMoji in eventlist):
                             customid = butt["custom_id"]
                             bot.click(
                                 aId,
