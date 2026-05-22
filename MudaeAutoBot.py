@@ -483,7 +483,7 @@ def daily_roll_reset(channelID, slash_daily_cmd):
                 if parsed_wait > 0:
                     cooldown_seconds = parsed_wait
                 else:
-                    # Neither ✅ nor a recognizable cooldown text
+                    # Neither ✅ nor a recognisable cooldown text
                     print(f"Failed to claim daily roll reset, retrying in {round(cooldown_seconds)} seconds.")
                     print(content)
         # Store cooldown timestamp
@@ -1074,7 +1074,7 @@ def on_message(resp):
         
         if settings['daily_claiming'].lower().strip() == "true":
             time.sleep(3)
-            d = threading.Thread(target=daily_roll_reset,args=[shids[0], slash_daily_cmd])
+            d = threading.Thread(target=daily_roll_reset,args=[mhids[0], slash_daily_cmd])
             d.start()
         if settings['poke_rolling'].lower().strip() == "true":
             time.sleep(3)
