@@ -6,9 +6,6 @@
    "slash_ids":[
 	  <channel_ids>
    ],
-   "slash_guild_ids":[
-      <guild_ids>
-   ],
    "claim_delay":8,
    "kak_delay":9,
    "use_emoji":"<:keqing_love:795077041761288214>",

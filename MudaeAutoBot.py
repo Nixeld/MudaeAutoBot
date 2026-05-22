@@ -40,7 +40,6 @@ with open("cmds.txt","r") as f:
     mudae_cmds = [line.rstrip() for line in f]
 mhids = [int(mh) for mh in settings["channel_ids"]]
 shids = [int(sh) for sh in settings["slash_ids"]]
-ghids = [int(gh) for gh in settings["slash_guild_ids"]]
 channel_settings = dict()
 
 series_list = settings["series_list"]
@@ -79,7 +78,7 @@ kakera_list = {
     for cost, emojis in raw_kakera_list.items()
 }
 eventlist = ["🕯️","😆","🍫","🎀","🧸","🎄"]
-ouroSpheres = ["spB2", "spT2", "spG2", "spY2", "spO2", "spR2", "spL2", "spD2"]
+ouroSpheres = ["spB2", "spT2", "spG2", "spY2", "spO2", "spR2", "spL2", "spD2", "spM"]
 
 #Last min Claims
 is_last_enable = True if settings["last_true"].lower().strip() == "true" else False 
@@ -438,9 +437,25 @@ def daily_message_check(slashchannel):
         return False
     return c
 
-def daily_roll_reset(slashchannel, slashguild, slash_daily_cmd):
-    if not slashchannel or not slashguild:
-        logger.error(f"Could not find channel {slashchannel} or guild {slashguild}, will not collect daily roll reset.")
+def guild_id_from_channel(channel_id):
+    # 1) try cached READY data
+    guilds = bot.gateway.session.settings_ready.get("guilds", {})
+    ch = str(channel_id)
+    for gid, g in guilds.items():
+        if ch in g.get("channels", {}):
+            return int(gid)
+    # 2) fallback to API channel lookup
+    try:
+        channel = bot.getChannel(str(channel_id)).json()
+        gid = channel.get("guild_id")
+        return int(gid) if gid else None
+    except Exception:
+        return None
+
+def daily_roll_reset(channelID, slash_daily_cmd):
+    guildID = guild_id_from_channel(channelID)
+    if not channelID or not guildID:
+        logger.error(f"Could not find channel {channelID} or guild {guildID}, will not collect daily roll reset.")
         return
     global daily_roll_reset_wall
     while True:
@@ -450,10 +465,10 @@ def daily_roll_reset(slashchannel, slashguild, slash_daily_cmd):
             print(f"Daily roll reset on cooldown, {round(cooldown_remaining)} seconds until next claim.")
             time.sleep(max(cooldown_remaining, 1))
 
-        bot.triggerSlashCommand(str(mudae), channelID=slashchannel, guildID=slashguild, data=slash_daily_cmd)
+        bot.triggerSlashCommand(str(mudae), channelID, guildID, data=slash_daily_cmd)
         # Default: 30 minutes if timeout or invalid state/format
         cooldown_seconds = 30 * 60
-        resp = wait_for(bot, daily_message_check(slashchannel), timeout=5)
+        resp = wait_for(bot, daily_message_check(channelID), timeout=5)
         if resp is None:
             print(f"Failed to claim daily roll reset, retrying in {round(cooldown_seconds)} seconds.")
         else:
@@ -478,9 +493,12 @@ def daily_roll_reset(slashchannel, slashguild, slash_daily_cmd):
         cooldown_remaining = daily_roll_reset_wall - time.time()
         if cooldown_remaining > 0:
             time.sleep(cooldown_remaining)
+
+# def ourospheres()
         
-def waifu_roll(tide,slashed,slashguild):
+def waifu_roll(tide,slashed):
     global user
+    guildID = guild_id_from_channel(tide)
     if slashed == None:
         print(f"Rolling for waifus in channel {tide}.")
     else:
@@ -509,7 +527,7 @@ def waifu_roll(tide,slashed,slashguild):
         checkmudaedown = 0
         while waifuwait == False:
             if slashed != None:
-                bot.triggerSlashCommand(str(mudae), channelID=tides, guildID=slashguild, data=slashed)
+                bot.triggerSlashCommand(str(mudae), channelID=tides, guildID=guildID, data=slashed)
             else:
                 bot.sendMessage(tides,roll_cmd)
             varwait = wait_for(bot,mudae_warning(tides,False),timeout=5)
@@ -1005,8 +1023,7 @@ def on_message(resp):
             #         print(f"{emoji} was detected in Server: {rguildid}")
             #         time.sleep(snipe_delay)
             #         bot.addReaction(rchannelid,rmessageid,emoji)
-
-                    
+          
     if resp.event.guild_application_commands_updated:
         guild_id = resp.parsed.auto()['guild_id']
         slashCmds = bot.getGuildSlashCommands(guild_id).json()["application_commands"]
@@ -1021,8 +1038,7 @@ def on_message(resp):
                 if settings['slash_rolling'].lower().strip() == "true" and slashget != None:
                     for xchg in range(len(shids)):
                         slashchannel = shids[xchg]
-                        slashguild = ghids[xchg]
-                        slashfus = threading.Timer(10.0,waifu_roll,args=[slashchannel,slashget,slashguild])
+                        slashfus = threading.Timer(10.0,waifu_roll,args=[slashchannel,slashget])
                         slashfus.start()
             elif name == "daily":
                 slash_daily_cmd = option
@@ -1037,8 +1053,10 @@ def on_message(resp):
         except KeyError:
             print(f"Unable to retrieve user information with Discum. Please ensure you are using a updated version of Discum.")
             raise
+
+        guildID = guild_id_from_channel(mhids[0])
         # Rate limit of 1 request every 5 seconds
-        bot.gateway.request.searchSlashCommands(str(ghids[0]), limit=100, query=slash_prefix)
+        bot.gateway.request.searchSlashCommands(str(guildID), limit=100, query=slash_prefix)
         
         try:
             guilds = bot.gateway.session.settings_ready['guilds']
@@ -1056,7 +1074,7 @@ def on_message(resp):
         
         if settings['daily_claiming'].lower().strip() == "true":
             time.sleep(3)
-            d = threading.Thread(target=daily_roll_reset,args=[shids[0], ghids[0], slash_daily_cmd])
+            d = threading.Thread(target=daily_roll_reset,args=[shids[0], slash_daily_cmd])
             d.start()
         if settings['poke_rolling'].lower().strip() == "true":
             time.sleep(3)
