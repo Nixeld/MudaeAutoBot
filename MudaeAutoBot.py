@@ -54,7 +54,7 @@ reset_claim_timer_cooldown = settings["reset_claim_timer_cooldown"]
 sniping = settings.get("sniping_enabled",True)
 auto_accept_gifts = True if settings.get("auto_accept_gifts", "True").lower().strip() == "true" else False
 claim_free = True if settings.get("claim_free", "True").lower().strip() == "true" else False
-react_event = True if settings.get("react_event", "True").lower().strip() == "true" else False
+mudae_event = True if settings.get("mudae_event", "True").lower().strip() == "true" else False
 
 ready = bot.gateway.READY
 
@@ -77,7 +77,7 @@ kakera_list = {
     int(str(cost)): [k.lower() for k in emojis]
     for cost, emojis in raw_kakera_list.items()
 }
-eventlist = ["🕯️","😆","🍫","🎀","🧸","🎄"]
+eventlist = ["🕯️","😆","🍫","🎀","🧸","🎄","🍭","👻","🍬"]
 ouroSpheres = ["spB2", "spT2", "spG2", "spY2", "spO2", "spR2", "spL2", "spD2", "spM"]
 
 #Last min Claims
@@ -727,7 +727,7 @@ def on_message(resp):
                         allowed_by_cost = buttMoji_lower in allowed_emojis_for_cost
 
                         # Only claim kakera that match the configured cost or free kakera or emoji part of a reaction event
-                        if (allowed_by_cost and cooldown <= 0) or free or (react_event and buttMoji in eventlist):
+                        if (allowed_by_cost and cooldown <= 0) or free or (mudae_event and buttMoji in eventlist):
                             customid = butt["custom_id"]
                             bot.click(
                                 aId,
@@ -799,12 +799,12 @@ def on_message(resp):
                 # confirmed user roll
                 c_settings['rolls'] += 1
             
-            # Mudae reaction event
-            if react_event:
+            # Mudae event
+            if mudae_event:
                 raw_description = embeds[0]["description"]
                 # Normalize newlines to spaces for checking
                 normalized_description = raw_description.replace("\n", " ")
-                if "React on me, it's free!" in normalized_description:
+                if "Click on me, it's free!" in normalized_description:
                     if butts.components != []:
                         custom_id = butts.components[0]["components"][0]["custom_id"]
                         if custom_id:
