@@ -233,7 +233,7 @@ def claim_check(channel_id):
     return c
 
 def msg_checking(msgcontent):
-    msgtocheck = ["maintenance"] #list to check incase bot is down
+    msgtocheck = ["maintenance", "reboot"] #list to check incase bot is down
     msgcontent = str(msgcontent)
     t = False
     if msgcontent.startswith(f"**{user['username']}"):
@@ -398,6 +398,16 @@ def next_reset(channel):
     t = time.time()
     return t+(3600-((t-offset)%3600))
 
+def next_retry_after_down(channel, downtime):
+    # Retry at least 5 minutes after the downtime check, at a random minute inside
+    # whichever roll window (reset_min .. reset_min-1 of the next hour) that time lands in.
+    start = downtime + 5*60
+    offset = channel_settings[int(channel)]['reset_min']*60
+    # boundary = start rounded up to the next :reset_min; window_end is the minute before it
+    boundary = ((start - offset) // 3600 + 1) * 3600 + offset
+    window_end = boundary - 60
+    return start + random.randint(0, int((window_end - start) // 60))*60
+
 def poke_roll(tide):
     tides = str(tide)
     if tide not in channel_settings:
@@ -409,7 +419,12 @@ def poke_roll(tide):
         while pwait == 0:
             time.sleep(2)
             bot.sendMessage(tides,c_settings['prefix']+"p")
-            pwait = 2*60*60 # sleep for 2 hours
+            if wait_for(bot,mudae_warning(tides,False),timeout=5) is None:
+                now = time.time()
+                pwait = next_retry_after_down(tide, now) - now
+                print(f"Mudae appears down in channel {tide}. Next poke claim in {round(pwait)} seconds.")
+            else:
+                pwait = 2*60*60 # sleep for 2 hours
         print(f"Catching Pokemon in channel {tide}. Next claim in {pwait} seconds.")
         time.sleep(pwait) 
         pwait = 0
@@ -575,8 +590,14 @@ def waifu_roll(tide,slashed):
         offset_random = 0
         if random_rolling:
             offset_random = random.randint(0,58)*60
-        print(f"Finish rolling for waifus in channel {tide}. Next roll in {round(((next_reset(tide)-time.time())+1) + offset_random)} seconds.")
-        time.sleep((next_reset(tide)-time.time())+1+offset_random)
+        if checkmudaedown > 3:
+            now = time.time()
+            wait_until = next_retry_after_down(tide, now)
+            print(f"Mudae is down in channel {tide}. Next roll in {round(wait_until-now)} seconds.")
+        else:
+            wait_until = (next_reset(tide)+1+offset_random)
+            print(f"Finish rolling for waifus in channel {tide}. Next roll in {round(wait_until-time.time())} seconds.")
+        time.sleep(wait_until-time.time())
         waifuwait = False
 
 def snipe_character_delay(recv_time, snipe_delay):
