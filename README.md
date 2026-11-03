@@ -13,7 +13,7 @@ MudaeAutoBot is a python bot that auto rolls and attempts to snipe Kakeras and C
 + Using daily Kakera to reset kakera reaction power
 + Selective Kakera reaction snipe features (Includes: Soulmate Kakera sniping)
 + Selective character snipes features using character or series name
-+ Automatically react on Mudae event characters (eg. Christmas Art Contest 2024 - React on me, it's free!)
++ Automatically react on Mudae event characters (eg. Halloween Art Contest 2026 - Click on me, it's free!)
 
 ## How it works
 All this bot needs to work is your Discord token, channel IDs and server IDs that you want to roll in.

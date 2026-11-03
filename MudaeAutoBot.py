@@ -96,7 +96,11 @@ resetclaimtimer_wall = {}
 ourochest_wall = {}
 ourochest_busy = set()
 daily_roll_reset_wall = 0.0
+slash_daily_cmd = None
 slash_sphere_cmd = None
+# Guilds with a slash command fetch retry already queued, so chains cannot stack.
+guilds_retrying = set()
+slash_retry_lock = threading.Lock()
 
 COOLDOWNS_FILE = pathjoin('user', 'cooldowns.json')
 
@@ -205,7 +209,7 @@ def get_kakera_cost(kakera_message):
     return cost
 
 _resp = dict()
-def wait_for(bot, predicate, timeout=None):
+def wait_for(bot, predicate, timeout=None, on_registered=None):
     ev = threading.Event()
     ident = threading.get_ident()
     def evt_check(resp):
@@ -213,6 +217,10 @@ def wait_for(bot, predicate, timeout=None):
             _resp[ident] = resp.parsed.auto()
             ev.set()
     bot.gateway._after_message_hooks.insert(0,evt_check)
+    # Lets a caller fire the command that produces the reply only after we are
+    # already listening, so a fast answer cannot slip past between the two.
+    if on_registered is not None:
+        on_registered()
     ev.wait(timeout)
     bot.gateway.removeCommand(evt_check)
     obj = _resp.pop(ident,None)
@@ -477,7 +485,90 @@ def guild_id_from_channel(channel_id):
     except Exception:
         return None
 
-def daily_roll_reset(channelID, slash_daily_cmd):
+# The search event only carries command ids, so the payloads must be fetched over REST,
+# which is rate limited. Never block here: the gateway loop runs these callbacks
+# synchronously, so retries go through a timer instead of sleeping in place.
+def process_guild_slash_commands(slashCmds):
+    s = SlashCommander(slashCmds, application_id=str(mudae))
+    options = s.commands.get("options") or []
+    # Find the rolling, daily and sphere slashes
+    global slash_daily_cmd
+    global slash_sphere_cmd
+    for option in options:
+        name = option.get("name")
+        if name == slash_prefix:
+            slashget = option
+            if settings['slash_rolling'].lower().strip() == "true" and slashget != None:
+                for xchg in range(len(shids)):
+                    slashchannel = shids[xchg]
+                    slashfus = threading.Timer(10.0,waifu_roll,args=[slashchannel,slashget])
+                    slashfus.start()
+        elif name == "daily":
+            slash_daily_cmd = option
+        elif name == "sphere":
+            for sub in option.get("options") or []:
+                if sub.get("name") == "chest":
+                    # /sphere chest, shaped like the data Discord itself sends.
+                    slash_sphere_cmd = {
+                        "name": option["name"],
+                        "type": option["type"],
+                        "id": option["id"],
+                        "version": option["version"],
+                        "options": [{"name": sub["name"], "type": sub["type"], "options": []}],
+                    }
+
+def retry_slash_command_fetch(guild_id, delay, attempts_left):
+    body = None
+    try:
+        body = bot.getGuildSlashCommands(guild_id).json()
+    except Exception as e:
+        print(f"Slash command fetch for guild {guild_id} failed: {e}")
+    commands = (body or {}).get("application_commands")
+    if commands:
+        process_guild_slash_commands(commands)
+        with slash_retry_lock:
+            guilds_retrying.discard(str(guild_id))
+        return
+    if attempts_left <= 0:
+        print(f"Giving up on the slash command fetch for guild {guild_id}; the daily and sphere threads will ask again.")
+        with slash_retry_lock:
+            guilds_retrying.discard(str(guild_id))
+        return
+    # Discord answers a rate limit with retry_after and no command list.
+    delay = (body or {}).get("retry_after")
+    delay = max(float(delay), 1) if delay is not None else 5
+    print(f"Still no slash commands for guild {guild_id}, retrying the fetch in {round(delay)} seconds.")
+    threading.Timer(delay, retry_slash_command_fetch, args=[guild_id, delay, attempts_left - 1]).start()
+
+def on_slash_commands_updated(resp):
+    guild_id = resp.parsed.auto()['guild_id']
+    body = None
+    try:
+        body = bot.getGuildSlashCommands(guild_id).json()
+    except Exception as e:
+        print(f"Slash command fetch for guild {guild_id} failed: {e}")
+    commands = (body or {}).get("application_commands")
+    if not commands:
+        # Only one retry chain per guild, so repeated searches cannot stack fetches.
+        with slash_retry_lock:
+            already_running = str(guild_id) in guilds_retrying
+            if not already_running:
+                guilds_retrying.add(str(guild_id))
+        if already_running:
+            print(f"Slash command fetch for guild {guild_id} is already being retried.")
+            return
+        print(f"No slash commands returned for guild {guild_id}, scheduling a retry.")
+        threading.Timer(5, retry_slash_command_fetch, args=[guild_id, 5, 5]).start()
+        return
+    process_guild_slash_commands(commands)
+
+def request_slash_command_search(guild_id, query):
+    try:
+        bot.gateway.request.searchSlashCommands(str(guild_id), limit=100, query=query)
+    except Exception as e:
+        print(f"Could not request a slash command search in guild {guild_id}: {e}")
+
+def daily_roll_reset(channelID):
     guildID = guild_id_from_channel(channelID)
     if not channelID or not guildID:
         logger.error(f"Could not find channel {channelID} or guild {guildID}, will not collect daily roll reset.")
@@ -490,10 +581,20 @@ def daily_roll_reset(channelID, slash_daily_cmd):
             print(f"Daily roll reset on cooldown, {round(cooldown_remaining)} seconds until next claim.")
             time.sleep(max(cooldown_remaining, 1))
 
-        bot.triggerSlashCommand(str(mudae), channelID, guildID, data=slash_daily_cmd)
+        # Read the global each pass: the slash command can arrive long after this thread starts.
+        daily_cmd = slash_daily_cmd
+        if daily_cmd is None:
+            print("Waiting for the /daily slash command before claiming the daily roll reset.")
+            request_slash_command_search(guildID, "daily")
+            # Long enough not to re-trigger the command fetch while a retry is already in flight.
+            time.sleep(60)
+            continue
+
+        # Listen before firing so a reply that beats us to the gateway is not missed.
+        resp = wait_for(bot, daily_message_check(channelID), timeout=5,
+                        on_registered=lambda: bot.triggerSlashCommand(str(mudae), channelID, guildID, data=daily_cmd))
         # Default: 30 minutes if timeout or invalid state/format
         cooldown_seconds = 30 * 60
-        resp = wait_for(bot, daily_message_check(channelID), timeout=5)
         if resp is None:
             print(f"Failed to claim daily roll reset, retrying in {round(cooldown_seconds)} seconds.")
         else:
@@ -1348,36 +1449,7 @@ def on_message(resp):
             #         bot.addReaction(rchannelid,rmessageid,emoji)
           
     if resp.event.guild_application_commands_updated:
-        guild_id = resp.parsed.auto()['guild_id']
-        slashCmds = bot.getGuildSlashCommands(guild_id).json()["application_commands"]
-        s = SlashCommander(slashCmds, application_id=str(mudae))
-        # Find both rolling slash and daily slash
-        global slash_daily_cmd
-        global slash_sphere_cmd
-        for sli in range(len(s.commands.get("options"))):
-            option = s.commands.get("options")[sli]
-            name = option.get("name")
-            if name == slash_prefix:
-                slashget = option
-                if settings['slash_rolling'].lower().strip() == "true" and slashget != None:
-                    for xchg in range(len(shids)):
-                        slashchannel = shids[xchg]
-                        slashfus = threading.Timer(10.0,waifu_roll,args=[slashchannel,slashget])
-                        slashfus.start()
-            elif name == "daily":
-                slash_daily_cmd = option
-            elif name == "sphere":
-                for sub in option.get("options") or []:
-                    if sub.get("name") == "chest":
-                        # /sphere chest, shaped like the data Discord itself sends.
-                        slash_sphere_cmd = {
-                            "name": option["name"],
-                            "type": option["type"],
-                            "id": option["id"],
-                            "version": option["version"],
-                            "options": [{"name": sub["name"], "type": sub["type"], "options": []}],
-                        }
-                        print(f"Found the /sphere chest slash command in guild {guild_id}.")
+        on_slash_commands_updated(resp)
             
     global ready
  
@@ -1409,8 +1481,7 @@ def on_message(resp):
                 channel_settings[int(matched_channel)] = c_settings
         
         if settings['daily_claiming'].lower().strip() == "true":
-            time.sleep(3)
-            d = threading.Thread(target=daily_roll_reset,args=[mhids[0], slash_daily_cmd])
+            d = threading.Thread(target=daily_roll_reset,args=[mhids[0]])
             d.start()
         if ourochest_enabled:
             # One scheduler per monitored channel, since the attempt is per channel.
