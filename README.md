@@ -9,7 +9,7 @@ MudaeAutoBot is a python bot that auto rolls and attempts to snipe Kakeras and C
 + Random roll timings to make it look more human
 + Pokeslot rolling
 + Claiming daily roll reset
-+ Playing the $oc (ourochest) sphere minigame once a day in each monitored channel as well as any extra one you start yourself
++ Playing the $oc (ourochest) sphere minigame once a day in each monitored channel as well as any extra one you start yourself through `/sphere chest`
 + Using daily Kakera to reset kakera reaction power
 + Selective Kakera reaction snipe features (Includes: Soulmate Kakera sniping)
 + Selective character snipes features using character or series name
@@ -52,7 +52,7 @@ Some settings may be superseded by your Mudae server settings.
 + `reset_claim_timer` - (True|False) **Case-sensitive**, If enabled, the bot will attempt to run the $rt command when it is needs to claim a character but it is still on cooldown.
 + `reset_claim_timer_cooldown` - (integer, in hours) Set this value to your cooldown time for the $rt command. You can find your cooldown time by running $bonus.
 + `daily_claiming` - (True|False) **Case-sensitive**, Automatically claim daily roll reset whenever it is available. It will run /daily in the first channel set in your `channelids`.
-+ `ourochest` - (True|False) **Case-sensitive**, Play the $oc (ourochest) sphere minigame in every channel in `channelids`, once per channel per reset day (08:00 GMT+8). If the bot was offline when it reset, it plays as soon as it starts up. Defaults to True if the setting is missing.
++ `ourochest` - (True|False) **Case-sensitive**, Play the $oc (ourochest) sphere minigame in every channel in `channelids`, once per channel per reset day (08:00 GMT+8). If the bot was offline when it reset, it plays as soon as it starts up.
 + `poke_rolling` - (True|False) **Case-sensitive**, Pokeslot rolling enabled, uses `channelid`
 + `series_list` - **Case-sensitive** Name of series of characters you want to claim  e.g. \[ "Honkai Impact 3rd" , "Senran Kagura" \]
 + `name_list` - **Must be exact match** List of specific character names to claim  e.g. \["Raiden Mei", "gOkU" \]
