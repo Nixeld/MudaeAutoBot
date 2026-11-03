@@ -11,6 +11,9 @@ from os.path import join as pathjoin
 from discum.utils.slash import SlashCommander
 from discum.utils.button import Buttoner
 from collections import OrderedDict
+from functools import lru_cache
+from itertools import combinations
+from math import comb
 
 class CacheDict(OrderedDict):
     def __init__(self, *args, **kwds):
@@ -55,6 +58,7 @@ sniping = settings.get("sniping_enabled",True)
 auto_accept_gifts = True if settings.get("auto_accept_gifts", "True").lower().strip() == "true" else False
 claim_free = True if settings.get("claim_free", "True").lower().strip() == "true" else False
 mudae_event = True if settings.get("mudae_event", "True").lower().strip() == "true" else False
+ourochest_enabled = True if settings.get("ourochest", "True").lower().strip() == "true" else False
 
 ready = bot.gateway.READY
 
@@ -89,13 +93,16 @@ kakera_wall = {}
 waifu_wall = {}
 dailykakera_wall = {}
 resetclaimtimer_wall = {}
+ourochest_wall = {}
+ourochest_busy = set()
 daily_roll_reset_wall = 0.0
+slash_sphere_cmd = None
 
 COOLDOWNS_FILE = pathjoin('user', 'cooldowns.json')
 
 def load_cooldowns():
     """Load cooldown timers from file."""
-    global kakera_wall, waifu_wall, dailykakera_wall, resetclaimtimer_wall, daily_roll_reset_wall
+    global kakera_wall, waifu_wall, dailykakera_wall, resetclaimtimer_wall, ourochest_wall, daily_roll_reset_wall
     try:
         with open(COOLDOWNS_FILE, 'r', encoding='utf-8') as f:
             cooldowns = json.load(f)
@@ -104,6 +111,8 @@ def load_cooldowns():
             waifu_wall = {str(k): int(v) for k, v in cooldowns.get('waifu_wall', {}).items()}
             dailykakera_wall = {str(k): float(v) for k, v in cooldowns.get('dailykakera_wall', {}).items()}
             resetclaimtimer_wall = {str(k): float(v) for k, v in cooldowns.get('resetclaimtimer_wall', {}).items()}
+            # The $ourochest wall holds the UTC day an attempt was spent on, not a timer.
+            ourochest_wall = {str(k): str(v) for k, v in cooldowns.get('ourochest_wall', {}).items()}
             daily_roll_reset_wall = float(cooldowns.get('daily_roll_reset_wall', 0.0))
             print(f"Loaded cooldown timers from {COOLDOWNS_FILE}")
     except FileNotFoundError:
@@ -119,6 +128,7 @@ def save_cooldowns():
             'waifu_wall': {str(k): v for k, v in waifu_wall.items()},
             'dailykakera_wall': {str(k): v for k, v in dailykakera_wall.items()},
             'resetclaimtimer_wall': {str(k): v for k, v in resetclaimtimer_wall.items()},
+            'ourochest_wall': {str(k): v for k, v in ourochest_wall.items()},
             'daily_roll_reset_wall': daily_roll_reset_wall,
         }
         with open(COOLDOWNS_FILE, 'w', encoding='utf-8') as f:
@@ -509,8 +519,294 @@ def daily_roll_reset(channelID, slash_daily_cmd):
         if cooldown_remaining > 0:
             time.sleep(cooldown_remaining)
 
-# def ourospheres()
-        
+# $ourochest ($oc): a 5x5 grid of spheres hiding one red sphere, 5 clicks.
+# Mudae's colour rules are all conditions on the red sphere's position, so every click
+# narrows it down: orange sits next to red, yellow on a diagonal of red, green in red's
+# row or column, teal in red's row/column/diagonal, blue in none of them, and red is
+# never the centre cell.
+oc_value = {"B": 10, "T": 20, "G": 35, "Y": 55, "O": 90, "R": 150}
+oc_sphere = {"spB2": "B", "spT2": "T", "spG2": "G", "spY2": "Y", "spO2": "O", "spR2": "R"}
+oc_clicks_finder = re.compile(r'You can click \*\*([0-9]+)\*\* times')
+oc_cells = list(range(25))
+oc_center = 12
+oc_coord = {i: (i // 5, i % 5) for i in oc_cells}
+oc_reds = [c for c in oc_cells if c != oc_center]
+oc_order = ("B", "T", "G", "Y", "O", "R")
+oc_index = {c: i for i, c in enumerate(oc_order)}
+oc_colour_value = [oc_value[c] for c in oc_order]
+oc_boards = None
+oc_beam = 8
+
+def oc_rowcol(a, b):
+    return oc_coord[a][0] == oc_coord[b][0] or oc_coord[a][1] == oc_coord[b][1]
+
+def oc_diag(a, b):
+    return abs(oc_coord[a][0]-oc_coord[b][0]) == abs(oc_coord[a][1]-oc_coord[b][1]) != 0
+
+def oc_adjacent(a, b):
+    return abs(oc_coord[a][0]-oc_coord[b][0]) + abs(oc_coord[a][1]-oc_coord[b][1]) == 1
+
+def oc_lines(a, b):
+    return oc_rowcol(a, b) or oc_diag(a, b)
+
+oc_adj = {x: [c for c in oc_cells if oc_adjacent(x, c)] for x in oc_cells}
+oc_diag_cells = {x: [c for c in oc_cells if oc_diag(x, c)] for x in oc_cells}
+oc_rowcol_cells = {x: [c for c in oc_cells if oc_rowcol(x, c) and c != x] for x in oc_cells}
+oc_cons = {
+    "O": {x: frozenset(oc_adj[x]) for x in oc_cells},
+    "Y": {x: frozenset(oc_diag_cells[x]) for x in oc_cells},
+    "G": {x: frozenset(oc_rowcol_cells[x]) for x in oc_cells},
+    "T": {x: frozenset(c for c in oc_cells if oc_lines(x, c) and c != x) for x in oc_cells},
+    "B": {x: frozenset(c for c in oc_cells if not oc_lines(x, c) and c != x) for x in oc_cells},
+}
+
+def oc_refine(cands, x, colour):
+    # Red positions still possible after seeing `colour` on cell x.
+    return frozenset((cands & oc_cons[colour][x]) - {x})
+
+def oc_branches(cands, x):
+    return [c for c in ("O", "Y", "G", "T", "B") if oc_refine(cands, x, c)]
+
+@lru_cache(maxsize=None)
+def oc_guaranteed(cands, clicked, k):
+    # Can the red sphere still be hit within k clicks, whatever the board is?
+    if not cands:
+        return True
+    if k <= 0 or len(cands) == 1:
+        return k > 0
+    for x in [c for c in oc_cells if c not in clicked]:
+        bs = oc_branches(cands, x)
+        if not bs:
+            return True
+        if all(oc_guaranteed(oc_refine(cands, x, c), frozenset(clicked | {x}), k - 1) for c in bs):
+            return True
+    return False
+
+def oc_all_boards():
+    # Built once, on the first puzzle: every board Mudae can deal.
+    global oc_boards
+    if oc_boards is None:
+        oc_boards = oc_build_boards()
+    return oc_boards
+
+def oc_build_boards():
+    # Red anywhere but the centre, 2 orange drawn from the cells next to it, 3 yellow from
+    # its diagonals, 4 green from the rest of its row and column. Holding the whole set is
+    # what makes a cell's value exact instead of independent: once both oranges have been
+    # revealed, no other cell can still be one, so the yellows become the better click.
+    boards = []
+    unknown = oc_index["B"]
+    for red in oc_reds:
+        adj, diag = oc_adj[red], oc_diag_cells[red]
+        if len(adj) < 2 or len(diag) < 3:
+            continue
+        for orange in combinations(adj, 2):
+            for yellow in combinations(diag, 3):
+                pool = [c for c in oc_rowcol_cells[red] if c not in orange and c not in yellow]
+                if len(pool) < 4:
+                    continue
+                for green in combinations(pool, 4):
+                    layout = bytearray([unknown] * 25)
+                    layout[red] = oc_index["R"]
+                    for c in orange:
+                        layout[c] = oc_index["O"]
+                    for c in yellow:
+                        layout[c] = oc_index["Y"]
+                    for c in green:
+                        layout[c] = oc_index["G"]
+                    lines = oc_cons["T"][red]
+                    for c in oc_cells:
+                        if layout[c] == unknown and c in lines:
+                            layout[c] = oc_index["T"]
+                    p = (1.0 / len(oc_reds)) / comb(len(adj), 2) / comb(len(diag), 3) / comb(len(pool), 4)
+                    boards.append((p, bytes(layout), red))
+    return boards
+
+def oc_survive(alive, x, colour):
+    left = [b for b in alive if b[1][x] == oc_index[colour]]
+    # A board outside this model would leave nothing; keep the previous set and carry on.
+    return left if left else alive
+
+def oc_values(alive, free):
+    # Expected spheres from each still-clickable cell, over the boards still possible.
+    ev = {x: 0.0 for x in free}
+    total = 0.0
+    for w, layout, _ in alive:
+        total += w
+        for x in free:
+            ev[x] += w * oc_colour_value[layout[x]]
+    total = total or 1.0
+    return {x: v / total for x, v in ev.items()}
+
+def oc_next_click(observed, remaining, alive):
+    # Click the best-paying cell that still leaves the red sphere reachable inside the
+    # budget, judging the pay by looking one click ahead as well as at the cell itself.
+    # The board set is what makes both parts exact: the guarantee comes from which red
+    # positions are still possible, the pay from which spheres are still unaccounted for
+    # - a cell that could only have been orange is worth nothing once both oranges are up.
+    clicked = frozenset(observed)
+    cands = frozenset(b[2] for b in alive)
+    free = [x for x in oc_cells if x not in clicked]
+    ev = oc_values(alive, free)
+    if len(cands) <= 1:
+        # Red is pinned down, so its cell is worth the full 150 and simply wins this.
+        return max(free, key=lambda x: ev[x])
+    order = sorted(free, key=lambda x: -ev[x])
+    keepable = [x for x in order
+                if not oc_branches(cands, x)
+                or all(oc_guaranteed(oc_refine(cands, x, c), frozenset(clicked | {x}), remaining - 1)
+                       for c in oc_branches(cands, x))]
+    shortlist = (keepable or order)[:oc_beam]
+    if remaining <= 1 or len(shortlist) == 1:
+        return shortlist[0]
+    total = sum(b[0] for b in alive) or 1.0
+    best, best_score = shortlist[0], None
+    for x in shortlist:
+        buckets = {}
+        for b in alive:
+            buckets.setdefault(b[1][x], []).append(b)
+        score = ev[x]
+        for sub in buckets.values():
+            after = oc_values(sub, [c for c in free if c != x])
+            score += (sum(b[0] for b in sub) / total) * max(after.values())
+        if best_score is None or score > best_score:
+            best, best_score = x, score
+    return best
+
+def ourochest_board(message):
+    # Grid cell -> button for an ourochest chest puzzle, otherwise None. The other
+    # sphere minigames share these buttons, so the wording picks the chest out.
+    if "red sphere" not in message.get('content', ''):
+        return None
+    rows = message.get('components') or []
+    cells = {}
+    for r, row in enumerate(rows):
+        buttons = row.get('components') or []
+        if r > 4 or len(buttons) != 5:
+            return None
+        for c, butt in enumerate(buttons):
+            cells[r * 5 + c] = butt
+    if len(cells) != 25:
+        return None
+    return cells
+
+def ourochest_is_ours(message):
+    # Slash-triggered puzzles carry the triggering user; prefix-triggered ones carry no
+    # interaction at all and only appear when we type the command ourselves.
+    inter = message.get('interaction') or {}
+    uid = (inter.get('user') or {}).get('id')
+    return uid is None or uid == user['id']
+
+def ourochest_read(channelid, messageid):
+    # Current cell -> revealed colour; "U" is a sphere not clicked yet.
+    try:
+        msg = bot.getMessage(channelid, messageid).json()[0]
+        cells = ourochest_board(msg)
+        if cells is None:
+            return {}
+        return {c: oc_sphere.get((b.get('emoji') or {}).get('name'), "U") for c, b in cells.items()}
+    except Exception:
+        return {}
+
+def ourochest_solve(message):
+    channelid = message['channel_id']
+    messageid = message['id']
+    cells = ourochest_board(message)
+    try:
+        if cells is None:
+            return
+        ourochest_wall[channelid] = ourochest_today()
+        save_cooldowns()
+        butts = Buttoner(message['components'])
+        found = oc_clicks_finder.findall(message.get('content', ''))
+        budget = int(found[0]) if found else 5
+        print(f"Playing $ourochest in channel {channelid}, {budget} clicks available.")
+        observed, alive = {}, oc_all_boards()
+        for step in range(budget):
+            x = oc_next_click(observed, budget - step, alive)
+            bot.click(
+                str(mudae),
+                channelID=channelid,
+                guildID=message.get('guild_id'),
+                messageID=messageid,
+                messageFlags=message['flags'],
+                data=butts.getButton(customID=cells[x]['custom_id']),
+            )
+            colour = None
+            deadline = time.time() + 10
+            while time.time() < deadline:
+                revealed = ourochest_read(channelid, messageid)
+                if revealed.get(x, "U") != "U":
+                    colour = revealed[x]
+                    break
+                time.sleep(0.4)
+            if colour is None:
+                print(f"$ourochest: cell {x} never revealed in channel {channelid}, stopping.")
+                return
+            observed[x] = colour
+            alive = oc_survive(alive, x, colour)
+            print(f"$ourochest revealed {colour} ({oc_value[colour]} spheres) on cell {x} in channel {channelid}.")
+        total = sum(oc_value[c] for c in observed.values())
+        print(f"$ourochest finished in channel {channelid} with {total} spheres from {len(observed)} clicks.")
+    finally:
+        ourochest_busy.discard(messageid)
+
+def ourochest_next_reset():
+    # Attempts unlock at 08:00 GMT+8, which is 00:00 UTC. Epoch seconds are already
+    # aligned to UTC, so this does not care what timezone the bot runs in.
+    return (int(time.time()) // 86400 + 1) * 86400
+
+def ourochest_today():
+    # The attempt day rolls at 00:00 UTC, so the UTC date names the day the currently
+    # available attempt belongs to, whatever timezone the bot runs in.
+    return time.strftime("%Y-%m-%d", time.gmtime())
+
+def ourochest_puzzle_check(channel_id):
+    target = str(channel_id)
+    def c(r):
+        if r.event.message:
+            m = r.parsed.auto()
+            return (m['author']['id'] == str(mudae) and m['channel_id'] == target
+                    and ourochest_board(m) is not None and ourochest_is_ours(m))
+        return False
+    return c
+
+def ourochest_daily(channelID):
+    ch = str(channelID)
+    guildID = guild_id_from_channel(channelID)
+    if not guildID:
+        logger.error(f"Could not find guild for channel {ch}, will not play $ourochest there.")
+        return
+    while True:
+        today = ourochest_today()
+        last = ourochest_wall.get(ch)
+        if last == today:
+            # Today's attempt is spent, so wait for the rollover instead of re-checking.
+            time.sleep(max(ourochest_next_reset() - time.time(), 1))
+            continue
+        if last is None:
+            print(f"$ourochest has no recorded attempt for channel {ch}, playing now.")
+        else:
+            print(f"$ourochest was last played in channel {ch} on {last} and today is {today}, playing now.")
+        if slash_sphere_cmd is None:
+            print("Waiting for the /sphere slash command before playing $ourochest.")
+            time.sleep(5)
+            continue
+        # Record the attempt as taken before firing, so a slow answer cannot make us fire twice.
+        ourochest_wall[ch] = today
+        save_cooldowns()
+        started = False
+        for attempt in range(5):
+            bot.triggerSlashCommand(str(mudae), channelID, guildID, data=slash_sphere_cmd)
+            if wait_for(bot, ourochest_puzzle_check(channelID), timeout=20) is not None:
+                started = True
+                break
+            if attempt < 4:
+                print(f"$ourochest did not start in channel {ch}, retrying in 30 seconds.")
+                time.sleep(30)
+        if not started:
+            print(f"$ourochest never started in channel {ch}, waiting for the next reset.")
+
 def waifu_roll(tide,slashed):
     global user
     guildID = guild_id_from_channel(tide)
@@ -700,6 +996,12 @@ def on_message(resp):
             c_settings['pending'] = aId
             return
         elif int(aId) == mudae:
+            if ourochest_enabled and messageid not in ourochest_busy and ourochest_board(m) is not None and ourochest_is_ours(m):
+                # Our own puzzle, whether we scheduled it or someone typed $oc by hand.
+                ourochest_busy.add(messageid)
+                ocs = threading.Thread(target=ourochest_solve,args=[m])
+                ocs.start()
+                return
             if "interaction" in m:
                 # Mudae triggered via slash command
                 roller = m['interaction']['user']['id']
@@ -1051,6 +1353,7 @@ def on_message(resp):
         s = SlashCommander(slashCmds, application_id=str(mudae))
         # Find both rolling slash and daily slash
         global slash_daily_cmd
+        global slash_sphere_cmd
         for sli in range(len(s.commands.get("options"))):
             option = s.commands.get("options")[sli]
             name = option.get("name")
@@ -1063,6 +1366,18 @@ def on_message(resp):
                         slashfus.start()
             elif name == "daily":
                 slash_daily_cmd = option
+            elif name == "sphere":
+                for sub in option.get("options") or []:
+                    if sub.get("name") == "chest":
+                        # /sphere chest, shaped like the data Discord itself sends.
+                        slash_sphere_cmd = {
+                            "name": option["name"],
+                            "type": option["type"],
+                            "id": option["id"],
+                            "version": option["version"],
+                            "options": [{"name": sub["name"], "type": sub["type"], "options": []}],
+                        }
+                        print(f"Found the /sphere chest slash command in guild {guild_id}.")
             
     global ready
  
@@ -1097,6 +1412,11 @@ def on_message(resp):
             time.sleep(3)
             d = threading.Thread(target=daily_roll_reset,args=[mhids[0], slash_daily_cmd])
             d.start()
+        if ourochest_enabled:
+            # One scheduler per monitored channel, since the attempt is per channel.
+            for chid in mhids:
+                ocs = threading.Thread(target=ourochest_daily,args=[chid])
+                ocs.start()
         if settings['poke_rolling'].lower().strip() == "true":
             time.sleep(3)
             p = threading.Thread(target=poke_roll,args=[mhids[0]])

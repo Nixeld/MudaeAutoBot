@@ -9,6 +9,7 @@ MudaeAutoBot is a python bot that auto rolls and attempts to snipe Kakeras and C
 + Random roll timings to make it look more human
 + Pokeslot rolling
 + Claiming daily roll reset
++ Playing the $oc (ourochest) sphere minigame once a day in each monitored channel as well as any extra one you start yourself
 + Using daily Kakera to reset kakera reaction power
 + Selective Kakera reaction snipe features (Includes: Soulmate Kakera sniping)
 + Selective character snipes features using character or series name
@@ -51,6 +52,7 @@ Some settings may be superseded by your Mudae server settings.
 + `reset_claim_timer` - (True|False) **Case-sensitive**, If enabled, the bot will attempt to run the $rt command when it is needs to claim a character but it is still on cooldown.
 + `reset_claim_timer_cooldown` - (integer, in hours) Set this value to your cooldown time for the $rt command. You can find your cooldown time by running $bonus.
 + `daily_claiming` - (True|False) **Case-sensitive**, Automatically claim daily roll reset whenever it is available. It will run /daily in the first channel set in your `channelids`.
++ `ourochest` - (True|False) **Case-sensitive**, Play the $oc (ourochest) sphere minigame in every channel in `channelids`, once per channel per reset day (08:00 GMT+8). If the bot was offline when it reset, it plays as soon as it starts up. Defaults to True if the setting is missing.
 + `poke_rolling` - (True|False) **Case-sensitive**, Pokeslot rolling enabled, uses `channelid`
 + `series_list` - **Case-sensitive** Name of series of characters you want to claim  e.g. \[ "Honkai Impact 3rd" , "Senran Kagura" \]
 + `name_list` - **Must be exact match** List of specific character names to claim  e.g. \["Raiden Mei", "gOkU" \]
@@ -61,8 +63,7 @@ Some settings may be superseded by your Mudae server settings.
 + `min_kak_last_min` - same as min kak but only within the last minute claim window
 + `auto_accept_gifts` - (True|False) Automatically accept free characters gifts from the $give command, requires you to have unlocked Enhanced multitrade
 + `claim_free` - (True|False) Automatically claim kakeraP, free kakera spawned from Chaos kakera and Ourospheres from $op perk 9
-+ `mudae_event` - (True|False) Automatically click on Mudae event characters (eg. Halloween Art Contest 2026 - Click
-on me, it's free!)
++ `mudae_event` - (True|False) Automatically click on Mudae event characters (eg. Halloween Art Contest 2026 - Click on me, it's free!)
 
 # Optimize the snipes
 ~~Typing $settings in your server with mudae should give you the snipe and kaksnipping timers.~~
